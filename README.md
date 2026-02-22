@@ -8,7 +8,13 @@
 **BlockVerify** is a blockchain-based platform that ensures AI models remain authentic and untampered throughout their lifecycle. It stores cryptographic fingerprints (SHA-256 hashes) of trained AI models on the Polygon blockchain to provide immutable proof of integrity, version history tracking, and verification audit trails.
 
 ---
+## Members
 
+ 23BKT0059 - Shubhangam Singh
+ 23BKT0073 - Mihir Dixit
+ 23BKT0091 - Aditya Kumar 
+
+---
 ## 📖 Table of Contents
 
 - [Problem Statement](#-problem-statement)
