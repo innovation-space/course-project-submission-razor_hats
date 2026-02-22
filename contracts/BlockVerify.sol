@@ -344,5 +344,38 @@ contract BlockVerify is AccessControl, Pausable, ReentrancyGuard {
         return modelIds;
     }
 
-    // More functions coming soon...
+    /**
+     * @notice Verify model integrity by comparing a provided hash against the stored hash
+     * @param _modelId      Model identifier to verify
+     * @param _providedHash Hash to compare against the on-chain record
+     * @return isValid      True if the hashes match
+     */
+    function verifyModel(
+        bytes32 _modelId,
+        bytes32 _providedHash
+    )
+        external
+        whenNotPaused
+        existingModel(_modelId)
+        activeModel(_modelId)
+        validHash(_providedHash)
+        returns (bool isValid)
+    {
+        isValid = (_models[_modelId].modelHash == _providedHash);
+
+        _verificationLog[_modelId].push(VerificationRecord({
+            verifier:     msg.sender,
+            timestamp:    block.timestamp,
+            isValid:      isValid,
+            providedHash: _providedHash
+        }));
+
+        totalVerifications++;
+
+        emit ModelVerified(_modelId, msg.sender, isValid, block.timestamp);
+
+        return isValid;
+    }
+
+    // Version tracking and admin functions coming soon...
 }
