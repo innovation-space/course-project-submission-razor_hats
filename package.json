@@ -1,0 +1,46 @@
+{
+  "name": "blockverify",
+  "version": "1.0.0",
+  "description": "BlockVerify: AI Model Integrity Verification System on Blockchain",
+  "main": "hardhat.config.js",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "test:gas": "REPORT_GAS=true npx hardhat test",
+    "coverage": "npx hardhat coverage",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "deploy:amoy": "npx hardhat run scripts/deploy.js --network polygonAmoy",
+    "node": "npx hardhat node",
+    "lint:sol": "npx solhint 'contracts/**/*.sol'",
+    "clean": "npx hardhat clean",
+    "verify": "npx hardhat verify --network polygonAmoy"
+  },
+  "keywords": [
+    "blockchain",
+    "ai",
+    "model-verification",
+    "integrity",
+    "ethereum",
+    "solidity",
+    "polygon"
+  ],
+  "author": "razor_hats",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "hardhat": "^2.22.16",
+    "hardhat-gas-reporter": "^1.0.10",
+    "solidity-coverage": "^0.8.12",
+    "chai": "^4.3.7",
+    "ethers": "^6.13.4",
+    "solhint": "^4.5.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "dotenv": "^16.4.5"
+  }
+}
