@@ -221,5 +221,128 @@ contract BlockVerify is AccessControl, Pausable, ReentrancyGuard {
         _grantRole(AUDITOR_ROLE, msg.sender);
     }
 
-    // Core functions coming soon...
+    // ============================================================
+    //                     CORE FUNCTIONS
+    // ============================================================
+
+    /**
+     * @notice Register a new AI model on-chain
+     * @param _modelHash  SHA-256 hash (as bytes32) of the model artifact
+     * @param _modelName  Human-readable model name
+     * @param _metadata   IPFS CID or JSON metadata string
+     * @return modelId    Unique identifier for the registered model
+     */
+    function registerModel(
+        bytes32 _modelHash,
+        string calldata _modelName,
+        string calldata _metadata
+    )
+        external
+        whenNotPaused
+        nonReentrant
+        validHash(_modelHash)
+        validString(_modelName)
+        returns (bytes32 modelId)
+    {
+        modelId = _generateModelId(_modelHash, msg.sender);
+
+        if (_models[modelId].registeredAt != 0) {
+            revert ModelIdCollision(modelId);
+        }
+
+        _models[modelId] = AIModel({
+            modelHash:      _modelHash,
+            modelName:      _modelName,
+            metadata:       _metadata,
+            modelOwner:     msg.sender,
+            registeredAt:   block.timestamp,
+            currentVersion: 1,
+            isActive:       true
+        });
+
+        _ownerModels[msg.sender].push(modelId);
+        totalModels++;
+
+        // Seed the version history with the initial registration
+        _versionHistory[modelId].push(Version({
+            modelHash: _modelHash,
+            timestamp: block.timestamp,
+            changeLog: "Initial registration",
+            updatedBy: msg.sender
+        }));
+
+        emit ModelRegistered(modelId, msg.sender, _modelName, _modelHash, block.timestamp);
+
+        return modelId;
+    }
+
+    /**
+     * @notice Register multiple models in a single transaction
+     * @param _modelHashes Array of model hashes
+     * @param _modelNames  Array of model names
+     * @param _metadatas   Array of metadata strings
+     * @return modelIds    Array of generated model IDs
+     */
+    function batchRegisterModels(
+        bytes32[] calldata _modelHashes,
+        string[]  calldata _modelNames,
+        string[]  calldata _metadatas
+    )
+        external
+        whenNotPaused
+        nonReentrant
+        returns (bytes32[] memory modelIds)
+    {
+        uint256 count = _modelHashes.length;
+
+        if (count != _modelNames.length || count != _metadatas.length) {
+            revert ArrayLengthMismatch();
+        }
+        if (count == 0 || count > MAX_BATCH_SIZE) {
+            revert BatchSizeExceeded(count, MAX_BATCH_SIZE);
+        }
+
+        modelIds = new bytes32[](count);
+
+        for (uint256 i = 0; i < count; ) {
+            if (_modelHashes[i] == bytes32(0)) revert HashCannotBeZero();
+            if (bytes(_modelNames[i]).length == 0) revert StringCannotBeEmpty();
+
+            bytes32 modelId = _generateModelId(_modelHashes[i], msg.sender);
+            if (_models[modelId].registeredAt != 0) revert ModelIdCollision(modelId);
+
+            _models[modelId] = AIModel({
+                modelHash:      _modelHashes[i],
+                modelName:      _modelNames[i],
+                metadata:       _metadatas[i],
+                modelOwner:     msg.sender,
+                registeredAt:   block.timestamp,
+                currentVersion: 1,
+                isActive:       true
+            });
+
+            _ownerModels[msg.sender].push(modelId);
+
+            _versionHistory[modelId].push(Version({
+                modelHash: _modelHashes[i],
+                timestamp: block.timestamp,
+                changeLog: "Initial registration (batch)",
+                updatedBy: msg.sender
+            }));
+
+            emit ModelRegistered(modelId, msg.sender, _modelNames[i], _modelHashes[i], block.timestamp);
+
+            modelIds[i] = modelId;
+
+            unchecked { ++i; }
+        }
+
+        totalModels += count;
+
+        emit BatchRegistered(msg.sender, count, block.timestamp);
+
+        return modelIds;
+    }
+
+    // More functions coming soon...
 }
