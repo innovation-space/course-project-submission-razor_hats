@@ -298,3 +298,303 @@ describe("BlockVerify", function () {
       ).to.be.revertedWithCustomError(blockVerify, "ModelNotActive");
     });
 
+    it("Should revert with zero hash", async function () {
+      const { blockVerify, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+      const modelHash = ethers.id("zero-hash-verify");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, modelHash, "ZeroHashVerify", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(user2).verifyModel(modelId, ethers.ZeroHash)
+      ).to.be.revertedWithCustomError(blockVerify, "HashCannotBeZero");
+    });
+
+    it("Should allow multiple verifications on the same model", async function () {
+      const { blockVerify, user1, user2, auditor } = await loadFixture(deployBlockVerifyFixture);
+      const modelHash = ethers.id("multi-verify");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, modelHash, "MultiVerify", "meta"
+      );
+
+      await blockVerify.connect(user2).verifyModel(modelId, modelHash);
+      await blockVerify.connect(auditor).verifyModel(modelId, modelHash);
+      await blockVerify.connect(user1).verifyModel(modelId, ethers.id("wrong"));
+
+      const log = await blockVerify.getVerificationLog(modelId);
+      expect(log.length).to.equal(3);
+      expect(log[0].isValid).to.be.true;
+      expect(log[1].isValid).to.be.true;
+      expect(log[2].isValid).to.be.false;
+    });
+  });
+
+  // ──────────────────── Version Tracking Tests ────────────────────
+
+  describe("addVersion", function () {
+    it("Should add a new version successfully", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const hash1 = ethers.id("v1");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hash1, "VersionModel", "meta"
+      );
+
+      const hash2 = ethers.id("v2");
+      await blockVerify.connect(user1).addVersion(modelId, hash2, "Improved accuracy");
+
+      const model = await blockVerify.getModel(modelId);
+      expect(model.modelHash).to.equal(hash2);
+      expect(model.currentVersion).to.equal(2);
+    });
+
+    it("Should update version history array", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const hash1 = ethers.id("vh1");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hash1, "HistoryModel", "meta"
+      );
+
+      const hash2 = ethers.id("vh2");
+      await blockVerify.connect(user1).addVersion(modelId, hash2, "Bug fix");
+
+      const hash3 = ethers.id("vh3");
+      await blockVerify.connect(user1).addVersion(modelId, hash3, "New features");
+
+      const history = await blockVerify.getVersionHistory(modelId);
+      expect(history.length).to.equal(3); // initial + 2 updates
+      expect(history[0].changeLog).to.equal("Initial registration");
+      expect(history[1].changeLog).to.equal("Bug fix");
+      expect(history[2].changeLog).to.equal("New features");
+    });
+
+    it("Should emit VersionAdded event", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const hash1 = ethers.id("ve1");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hash1, "EventVersion", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(user1).addVersion(modelId, ethers.id("ve2"), "Update")
+      ).to.emit(blockVerify, "VersionAdded");
+    });
+
+    it("Should only allow model owner to add versions", async function () {
+      const { blockVerify, user1, attacker } = await loadFixture(deployBlockVerifyFixture);
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("sec1"), "SecModel", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(attacker).addVersion(modelId, ethers.id("evil"), "hacked")
+      ).to.be.revertedWithCustomError(blockVerify, "NotModelOwner");
+    });
+
+    it("Should revert for inactive model", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("inactive-v"), "InactiveV", "meta"
+      );
+
+      await blockVerify.connect(user1).deactivateModel(modelId);
+
+      await expect(
+        blockVerify.connect(user1).addVersion(modelId, ethers.id("new"), "update")
+      ).to.be.revertedWithCustomError(blockVerify, "ModelNotActive");
+    });
+
+    it("Should revert with empty changelog", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("empty-cl"), "EmptyCL", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(user1).addVersion(modelId, ethers.id("new"), "")
+      ).to.be.revertedWithCustomError(blockVerify, "StringCannotBeEmpty");
+    });
+
+    it("Should make old hash fail verification after version update", async function () {
+      const { blockVerify, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+      const hash1 = ethers.id("old-hash");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hash1, "OldHash", "meta"
+      );
+
+      const hash2 = ethers.id("new-hash");
+      await blockVerify.connect(user1).addVersion(modelId, hash2, "Updated");
+
+      // Verify with old hash — should fail
+      const tx1 = await blockVerify.connect(user2).verifyModel(modelId, hash1);
+      const r1 = await tx1.wait();
+      const ev1 = r1.logs
+        .map((l) => { try { return blockVerify.interface.parseLog({ topics: l.topics, data: l.data }); } catch { return null; } })
+        .find((e) => e && e.name === "ModelVerified");
+      expect(ev1.args.isValid).to.be.false;
+
+      // Verify with new hash — should pass
+      const tx2 = await blockVerify.connect(user2).verifyModel(modelId, hash2);
+      const r2 = await tx2.wait();
+      const ev2 = r2.logs
+        .map((l) => { try { return blockVerify.interface.parseLog({ topics: l.topics, data: l.data }); } catch { return null; } })
+        .find((e) => e && e.name === "ModelVerified");
+      expect(ev2.args.isValid).to.be.true;
+    });
+  });
+
+  // ──────────────────── Deactivation / Reactivation Tests ────────────────────
+
+  describe("deactivateModel & reactivateModel", function () {
+    it("Should deactivate a model", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("deact"), "DeactModel", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(user1).deactivateModel(modelId)
+      ).to.emit(blockVerify, "ModelDeactivated");
+
+      const model = await blockVerify.getModel(modelId);
+      expect(model.isActive).to.be.false;
+    });
+
+    it("Should reactivate a deactivated model", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("react"), "ReactModel", "meta"
+      );
+
+      await blockVerify.connect(user1).deactivateModel(modelId);
+
+      await expect(
+        blockVerify.connect(user1).reactivateModel(modelId)
+      ).to.emit(blockVerify, "ModelReactivated");
+
+      const model = await blockVerify.getModel(modelId);
+      expect(model.isActive).to.be.true;
+    });
+
+    it("Should revert reactivation if already active", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("already-active"), "ActiveModel", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(user1).reactivateModel(modelId)
+      ).to.be.revertedWithCustomError(blockVerify, "ModelAlreadyActive");
+    });
+
+    it("Should only allow model owner to deactivate", async function () {
+      const { blockVerify, user1, attacker } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("owner-deact"), "OwnerDeact", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(attacker).deactivateModel(modelId)
+      ).to.be.revertedWithCustomError(blockVerify, "NotModelOwner");
+    });
+  });
+
+  // ──────────────────── Ownership Transfer Tests ────────────────────
+
+  describe("transferModelOwnership", function () {
+    it("Should transfer ownership successfully", async function () {
+      const { blockVerify, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("transfer"), "TransferModel", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(user1).transferModelOwnership(modelId, user2.address)
+      ).to.emit(blockVerify, "OwnershipTransferred");
+
+      const model = await blockVerify.getModel(modelId);
+      expect(model.modelOwner).to.equal(user2.address);
+    });
+
+    it("Should allow new owner to add versions after transfer", async function () {
+      const { blockVerify, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("transfer-v"), "TransferV", "meta"
+      );
+
+      await blockVerify.connect(user1).transferModelOwnership(modelId, user2.address);
+
+      // New owner can add version
+      await expect(
+        blockVerify.connect(user2).addVersion(modelId, ethers.id("new-v"), "New owner update")
+      ).to.not.be.reverted;
+
+      // Old owner cannot
+      await expect(
+        blockVerify.connect(user1).addVersion(modelId, ethers.id("old-v"), "Old owner update")
+      ).to.be.revertedWithCustomError(blockVerify, "NotModelOwner");
+    });
+
+    it("Should revert transfer to zero address", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("zero-transfer"), "ZeroTransfer", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(user1).transferModelOwnership(modelId, ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(blockVerify, "InvalidAddress");
+    });
+  });
+
+  // ──────────────────── Batch Registration Tests ────────────────────
+
+  describe("batchRegisterModels", function () {
+    it("Should register multiple models in one transaction", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      const hashes = [ethers.id("b1"), ethers.id("b2"), ethers.id("b3")];
+      const names = ["Batch1", "Batch2", "Batch3"];
+      const metas = ["meta1", "meta2", "meta3"];
+
+      const tx = await blockVerify.connect(user1).batchRegisterModels(hashes, names, metas);
+      await tx.wait();
+
+      expect(await blockVerify.totalModels()).to.equal(3);
+
+      const ownerModels = await blockVerify.getModelsByOwner(user1.address);
+      expect(ownerModels.length).to.equal(3);
+    });
+
+    it("Should emit BatchRegistered event", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      const hashes = [ethers.id("be1"), ethers.id("be2")];
+      const names = ["BE1", "BE2"];
+      const metas = ["m1", "m2"];
+
+      await expect(
+        blockVerify.connect(user1).batchRegisterModels(hashes, names, metas)
+      ).to.emit(blockVerify, "BatchRegistered");
+    });
+
+    it("Should revert on array length mismatch", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      await expect(
+        blockVerify.connect(user1).batchRegisterModels(
+          [ethers.id("x1"), ethers.id("x2")],
+          ["Name1"],
+          ["meta1", "meta2"]
+        )
+      ).to.be.revertedWithCustomError(blockVerify, "ArrayLengthMismatch");
+    });
+
+    it("Should revert on empty batch", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
