@@ -377,5 +377,115 @@ contract BlockVerify is AccessControl, Pausable, ReentrancyGuard {
         return isValid;
     }
 
-    // Version tracking and admin functions coming soon...
+    /**
+     * @notice Add a new version to an existing model
+     * @param _modelId   Model to update
+     * @param _newHash   Hash of the new model version
+     * @param _changeLog Description of changes in this version
+     */
+    function addVersion(
+        bytes32 _modelId,
+        bytes32 _newHash,
+        string calldata _changeLog
+    )
+        external
+        whenNotPaused
+        nonReentrant
+        existingModel(_modelId)
+        activeModel(_modelId)
+        onlyModelOwner(_modelId)
+        validHash(_newHash)
+        validString(_changeLog)
+    {
+        _models[_modelId].modelHash = _newHash;
+        _models[_modelId].currentVersion++;
+
+        _versionHistory[_modelId].push(Version({
+            modelHash: _newHash,
+            timestamp: block.timestamp,
+            changeLog: _changeLog,
+            updatedBy: msg.sender
+        }));
+
+        emit VersionAdded(
+            _modelId,
+            _models[_modelId].currentVersion,
+            _newHash,
+            _changeLog,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @notice Deactivate a model (soft delete — data remains on-chain)
+     * @param _modelId Model to deactivate
+     */
+    function deactivateModel(bytes32 _modelId)
+        external
+        existingModel(_modelId)
+        activeModel(_modelId)
+        onlyModelOwner(_modelId)
+    {
+        _models[_modelId].isActive = false;
+
+        emit ModelDeactivated(_modelId, msg.sender, block.timestamp);
+    }
+
+    /**
+     * @notice Reactivate a previously deactivated model
+     * @param _modelId Model to reactivate
+     */
+    function reactivateModel(bytes32 _modelId)
+        external
+        existingModel(_modelId)
+        onlyModelOwner(_modelId)
+    {
+        if (_models[_modelId].isActive) revert ModelAlreadyActive(_modelId);
+
+        _models[_modelId].isActive = true;
+
+        emit ModelReactivated(_modelId, msg.sender, block.timestamp);
+    }
+
+    /**
+     * @notice Transfer model ownership to a new address
+     * @param _modelId  Model whose ownership to transfer
+     * @param _newOwner New owner address
+     */
+    function transferModelOwnership(
+        bytes32 _modelId,
+        address _newOwner
+    )
+        external
+        existingModel(_modelId)
+        onlyModelOwner(_modelId)
+        validAddr(_newOwner)
+    {
+        address previousOwner = _models[_modelId].modelOwner;
+        _models[_modelId].modelOwner = _newOwner;
+        _ownerModels[_newOwner].push(_modelId);
+
+        emit OwnershipTransferred(_modelId, previousOwner, _newOwner, block.timestamp);
+    }
+
+    /**
+     * @notice Update model metadata (IPFS CID, description, etc.)
+     * @param _modelId     Model to update
+     * @param _newMetadata New metadata string
+     */
+    function updateMetadata(
+        bytes32 _modelId,
+        string calldata _newMetadata
+    )
+        external
+        existingModel(_modelId)
+        activeModel(_modelId)
+        onlyModelOwner(_modelId)
+        validString(_newMetadata)
+    {
+        _models[_modelId].metadata = _newMetadata;
+    }
+
+
+    // View and admin functions coming soon...
 }
