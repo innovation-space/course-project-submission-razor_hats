@@ -486,6 +486,141 @@ contract BlockVerify is AccessControl, Pausable, ReentrancyGuard {
         _models[_modelId].metadata = _newMetadata;
     }
 
+    // ============================================================
+    //                     VIEW FUNCTIONS
+    // ============================================================
 
-    // View and admin functions coming soon...
+    /**
+     * @notice Get full details of a registered model
+     * @param _modelId Model identifier
+     * @return model The AIModel struct
+     */
+    function getModel(bytes32 _modelId)
+        external
+        view
+        existingModel(_modelId)
+        returns (AIModel memory model)
+    {
+        return _models[_modelId];
+    }
+
+    /**
+     * @notice Get the complete version history for a model
+     * @param _modelId Model identifier
+     * @return versions Array of Version structs
+     */
+    function getVersionHistory(bytes32 _modelId)
+        external
+        view
+        existingModel(_modelId)
+        returns (Version[] memory versions)
+    {
+        return _versionHistory[_modelId];
+    }
+
+    /**
+     * @notice Get the verification audit trail for a model
+     * @param _modelId Model identifier
+     * @return records Array of VerificationRecord structs
+     */
+    function getVerificationLog(bytes32 _modelId)
+        external
+        view
+        existingModel(_modelId)
+        returns (VerificationRecord[] memory records)
+    {
+        return _verificationLog[_modelId];
+    }
+
+    /**
+     * @notice Get all model IDs owned by a specific address
+     * @param _owner Owner address
+     * @return modelIds Array of bytes32 model identifiers
+     */
+    function getModelsByOwner(address _owner)
+        external
+        view
+        validAddr(_owner)
+        returns (bytes32[] memory modelIds)
+    {
+        return _ownerModels[_owner];
+    }
+
+    /**
+     * @notice Check whether a model ID exists on-chain
+     * @param _modelId Model identifier to check
+     * @return exists True if the model has been registered
+     */
+    function modelExists(bytes32 _modelId) external view returns (bool exists) {
+        return _models[_modelId].registeredAt != 0;
+    }
+
+    /**
+     * @notice Get the current version number of a model
+     * @param _modelId Model identifier
+     * @return version Current version number
+     */
+    function getCurrentVersion(bytes32 _modelId)
+        external
+        view
+        existingModel(_modelId)
+        returns (uint256 version)
+    {
+        return _models[_modelId].currentVersion;
+    }
+
+    /**
+     * @notice Get the total number of verifications for a model
+     * @param _modelId Model identifier
+     * @return count Number of verification records
+     */
+    function getVerificationCount(bytes32 _modelId)
+        external
+        view
+        existingModel(_modelId)
+        returns (uint256 count)
+    {
+        return _verificationLog[_modelId].length;
+    }
+
+    // ============================================================
+    //                     ADMIN FUNCTIONS
+    // ============================================================
+
+    /**
+     * @notice Pause all state-changing operations (emergency stop)
+     * @dev Only callable by accounts with ADMIN_ROLE
+     */
+    function pause() external onlyRole(ADMIN_ROLE) {
+        _pause();
+    }
+
+    /**
+     * @notice Resume normal operations after a pause
+     * @dev Only callable by accounts with ADMIN_ROLE
+     */
+    function unpause() external onlyRole(ADMIN_ROLE) {
+        _unpause();
+    }
+
+    // ============================================================
+    //                    INTERNAL FUNCTIONS
+    // ============================================================
+
+    /**
+     * @dev Generate a unique model ID from hash, sender, timestamp, and counter
+     * @param _modelHash The model's hash
+     * @param _sender    The address registering the model
+     * @return modelId   Unique bytes32 identifier
+     */
+    function _generateModelId(bytes32 _modelHash, address _sender)
+        internal
+        returns (bytes32 modelId)
+    {
+        modelId = keccak256(
+            abi.encodePacked(_modelHash, _sender, block.timestamp, _modelCounter)
+        );
+        _modelCounter++;
+        return modelId;
+    }
 }
