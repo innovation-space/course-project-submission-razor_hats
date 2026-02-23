@@ -598,3 +598,296 @@ describe("BlockVerify", function () {
 
     it("Should revert on empty batch", async function () {
       const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      await expect(
+        blockVerify.connect(user1).batchRegisterModels([], [], [])
+      ).to.be.revertedWithCustomError(blockVerify, "BatchSizeExceeded");
+    });
+
+    it("Should revert if batch exceeds MAX_BATCH_SIZE", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      const size = 21;
+      const hashes = Array.from({ length: size }, (_, i) => ethers.id(`big-${i}`));
+      const names = Array.from({ length: size }, (_, i) => `Big${i}`);
+      const metas = Array.from({ length: size }, () => "meta");
+
+      await expect(
+        blockVerify.connect(user1).batchRegisterModels(hashes, names, metas)
+      ).to.be.revertedWithCustomError(blockVerify, "BatchSizeExceeded");
+    });
+  });
+
+  // ──────────────────── Metadata Update Tests ────────────────────
+
+  describe("updateMetadata", function () {
+    it("Should update metadata successfully", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("meta-upd"), "MetaUpdate", "old-meta"
+      );
+
+      await blockVerify.connect(user1).updateMetadata(modelId, "ipfs://QmNEW123");
+
+      const model = await blockVerify.getModel(modelId);
+      expect(model.metadata).to.equal("ipfs://QmNEW123");
+    });
+
+    it("Should revert for non-owner", async function () {
+      const { blockVerify, user1, attacker } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("meta-sec"), "MetaSec", "meta"
+      );
+
+      await expect(
+        blockVerify.connect(attacker).updateMetadata(modelId, "hacked")
+      ).to.be.revertedWithCustomError(blockVerify, "NotModelOwner");
+    });
+  });
+
+  // ──────────────────── Pause Tests ────────────────────
+
+  describe("Pause / Unpause", function () {
+    it("Should allow admin to pause", async function () {
+      const { blockVerify, owner } = await loadFixture(deployBlockVerifyFixture);
+      await blockVerify.connect(owner).pause();
+      expect(await blockVerify.paused()).to.be.true;
+    });
+
+    it("Should block registration when paused", async function () {
+      const { blockVerify, owner, user1 } = await loadFixture(deployBlockVerifyFixture);
+      await blockVerify.connect(owner).pause();
+
+      await expect(
+        blockVerify.connect(user1).registerModel(ethers.id("paused"), "Paused", "meta")
+      ).to.be.revertedWithCustomError(blockVerify, "EnforcedPause");
+    });
+
+    it("Should block verification when paused", async function () {
+      const { blockVerify, owner, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+      const modelHash = ethers.id("pause-verify");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, modelHash, "PauseVerify", "meta"
+      );
+
+      await blockVerify.connect(owner).pause();
+
+      await expect(
+        blockVerify.connect(user2).verifyModel(modelId, modelHash)
+      ).to.be.revertedWithCustomError(blockVerify, "EnforcedPause");
+    });
+
+    it("Should allow admin to unpause and resume operations", async function () {
+      const { blockVerify, owner, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      await blockVerify.connect(owner).pause();
+      await blockVerify.connect(owner).unpause();
+
+      // Should work again
+      await expect(
+        blockVerify.connect(user1).registerModel(ethers.id("unpaused"), "Unpaused", "meta")
+      ).to.not.be.reverted;
+    });
+
+    it("Should revert if non-admin tries to pause", async function () {
+      const { blockVerify, attacker } = await loadFixture(deployBlockVerifyFixture);
+
+      await expect(
+        blockVerify.connect(attacker).pause()
+      ).to.be.reverted;
+    });
+  });
+
+  // ──────────────────── View Functions Tests ────────────────────
+
+  describe("View Functions", function () {
+    it("Should return correct model via getModel", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const hash = ethers.id("view-model");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hash, "ViewModel", "view-meta"
+      );
+
+      const model = await blockVerify.getModel(modelId);
+      expect(model.modelName).to.equal("ViewModel");
+      expect(model.metadata).to.equal("view-meta");
+    });
+
+    it("Should check model existence correctly", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("exists"), "ExistsModel", "meta"
+      );
+
+      expect(await blockVerify.modelExists(modelId)).to.be.true;
+      expect(await blockVerify.modelExists(ethers.id("nonexistent"))).to.be.false;
+    });
+
+    it("Should return correct current version", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("cv1"), "CurrentV", "meta"
+      );
+
+      expect(await blockVerify.getCurrentVersion(modelId)).to.equal(1);
+
+      await blockVerify.connect(user1).addVersion(modelId, ethers.id("cv2"), "v2");
+      expect(await blockVerify.getCurrentVersion(modelId)).to.equal(2);
+
+      await blockVerify.connect(user1).addVersion(modelId, ethers.id("cv3"), "v3");
+      expect(await blockVerify.getCurrentVersion(modelId)).to.equal(3);
+    });
+
+    it("Should return verification count correctly", async function () {
+      const { blockVerify, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+      const hash = ethers.id("vc-test");
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hash, "VCTest", "meta"
+      );
+
+      expect(await blockVerify.getVerificationCount(modelId)).to.equal(0);
+
+      await blockVerify.connect(user2).verifyModel(modelId, hash);
+      expect(await blockVerify.getVerificationCount(modelId)).to.equal(1);
+
+      await blockVerify.connect(user2).verifyModel(modelId, ethers.id("wrong"));
+      expect(await blockVerify.getVerificationCount(modelId)).to.equal(2);
+    });
+
+    it("Should revert getModel for non-existent model", async function () {
+      const { blockVerify } = await loadFixture(deployBlockVerifyFixture);
+
+      await expect(
+        blockVerify.getModel(ethers.id("ghost"))
+      ).to.be.revertedWithCustomError(blockVerify, "ModelDoesNotExist");
+    });
+
+    it("Should revert getModelsByOwner for zero address", async function () {
+      const { blockVerify } = await loadFixture(deployBlockVerifyFixture);
+
+      await expect(
+        blockVerify.getModelsByOwner(ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(blockVerify, "InvalidAddress");
+    });
+  });
+
+  // ──────────────────── Full Lifecycle Integration Test ────────────────────
+
+  describe("Full Model Lifecycle", function () {
+    it("Should handle complete lifecycle: register → verify → update → verify → deactivate → reactivate", async function () {
+      const { blockVerify, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+
+      // 1. Register
+      const hashV1 = ethers.id("lifecycle-v1");
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hashV1, "LifecycleModel", "ipfs://Qm123"
+      );
+
+      let model = await blockVerify.getModel(modelId);
+      expect(model.currentVersion).to.equal(1);
+
+      // 2. Verify (valid)
+      await blockVerify.connect(user2).verifyModel(modelId, hashV1);
+      let log = await blockVerify.getVerificationLog(modelId);
+      expect(log[0].isValid).to.be.true;
+
+      // 3. Add version
+      const hashV2 = ethers.id("lifecycle-v2");
+      await blockVerify.connect(user1).addVersion(modelId, hashV2, "Improved accuracy to 98%");
+
+      model = await blockVerify.getModel(modelId);
+      expect(model.currentVersion).to.equal(2);
+      expect(model.modelHash).to.equal(hashV2);
+
+      // 4. Verify old hash (should fail)
+      await blockVerify.connect(user2).verifyModel(modelId, hashV1);
+      log = await blockVerify.getVerificationLog(modelId);
+      expect(log[1].isValid).to.be.false;
+
+      // 5. Verify new hash (should pass)
+      await blockVerify.connect(user2).verifyModel(modelId, hashV2);
+      log = await blockVerify.getVerificationLog(modelId);
+      expect(log[2].isValid).to.be.true;
+
+      // 6. Deactivate
+      await blockVerify.connect(user1).deactivateModel(modelId);
+      model = await blockVerify.getModel(modelId);
+      expect(model.isActive).to.be.false;
+
+      // 7. Cannot verify when inactive
+      await expect(
+        blockVerify.connect(user2).verifyModel(modelId, hashV2)
+      ).to.be.revertedWithCustomError(blockVerify, "ModelNotActive");
+
+      // 8. Reactivate
+      await blockVerify.connect(user1).reactivateModel(modelId);
+      model = await blockVerify.getModel(modelId);
+      expect(model.isActive).to.be.true;
+
+      // 9. Can verify again
+      await blockVerify.connect(user2).verifyModel(modelId, hashV2);
+      log = await blockVerify.getVerificationLog(modelId);
+      expect(log[3].isValid).to.be.true;
+
+      // 10. Check version history is complete
+      const history = await blockVerify.getVersionHistory(modelId);
+      expect(history.length).to.equal(2);
+
+      // 11. Check total stats
+      expect(await blockVerify.totalModels()).to.equal(1);
+      expect(await blockVerify.totalVerifications()).to.equal(4);
+    });
+  });
+
+  // ──────────────────── Gas Optimization Tests ────────────────────
+
+  describe("Gas Usage", function () {
+    it("Should register model within reasonable gas limit", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+
+      const tx = await blockVerify
+        .connect(user1)
+        .registerModel(ethers.id("gas-test"), "GasTest", "metadata");
+      const receipt = await tx.wait();
+
+      // Registration should be under 450k gas (includes OZ AccessControl + Pausable + ReentrancyGuard overhead)
+      expect(receipt.gasUsed).to.be.lessThan(450000n);
+      console.log(`    ⛽ registerModel gas used: ${receipt.gasUsed.toString()}`);
+    });
+
+    it("Should verify model within reasonable gas limit", async function () {
+      const { blockVerify, user1, user2 } = await loadFixture(deployBlockVerifyFixture);
+      const hash = ethers.id("gas-verify");
+
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, hash, "GasVerify", "meta"
+      );
+
+      const tx = await blockVerify.connect(user2).verifyModel(modelId, hash);
+      const receipt = await tx.wait();
+
+      // Verification should be under 200k gas
+      expect(receipt.gasUsed).to.be.lessThan(200000n);
+      console.log(`    ⛽ verifyModel gas used: ${receipt.gasUsed.toString()}`);
+    });
+
+    it("Should add version within reasonable gas limit", async function () {
+      const { blockVerify, user1 } = await loadFixture(deployBlockVerifyFixture);
+      const { modelId } = await registerAndGetId(
+        blockVerify, user1, ethers.id("gas-v1"), "GasVersion", "meta"
+      );
+
+      const tx = await blockVerify
+        .connect(user1)
+        .addVersion(modelId, ethers.id("gas-v2"), "Performance improvement");
+      const receipt = await tx.wait();
+
+      // Version addition should be under 150k gas
+      expect(receipt.gasUsed).to.be.lessThan(150000n);
+      console.log(`    ⛽ addVersion gas used: ${receipt.gasUsed.toString()}`);
+    });
+  });
+});
