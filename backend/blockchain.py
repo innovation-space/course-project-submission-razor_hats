@@ -137,3 +137,28 @@ class Blockchain:
         The transaction will be included in the next mined block.
         """
         self.pending_transactions.append(transaction)
+
+    def mine_pending_transactions(self):
+        """
+        Create a new block from all pending transactions, mine it
+        (proof-of-work), and append it to the chain.
+
+        Returns:
+            Block | None: The newly mined block, or None if the pool
+                          was empty.
+        """
+        if not self.pending_transactions:
+            return None
+
+        new_block = Block(
+            index=len(self.chain),
+            timestamp=time(),
+            transactions=self.pending_transactions.copy(),
+            previous_hash=self.get_latest_block().hash,
+        )
+
+        new_block.mine_block(self.difficulty)
+        self.chain.append(new_block)
+        self.pending_transactions = []
+
+        return new_block
