@@ -58,6 +58,32 @@ class Block:
         )
         return hashlib.sha256(block_string.encode()).hexdigest()
 
+    def mine_block(self, difficulty):
+        """
+        Perform proof-of-work mining.
+
+        Repeatedly increments the nonce and recalculates the hash until
+        the hash starts with ``difficulty`` leading zeros.
+
+        Example:
+            difficulty = 4  →  hash must start with "0000"
+
+        Args:
+            difficulty (int): Number of leading zeros required.
+
+        Returns:
+            int: Total number of hash attempts (mining work done).
+        """
+        target = "0" * difficulty
+        attempts = 0
+
+        while self.hash[:difficulty] != target:
+            self.nonce += 1
+            self.hash = self.calculate_hash()
+            attempts += 1
+
+        return attempts
+
     def to_dict(self):
         """Serialize the block to a JSON-friendly dictionary."""
         return {
