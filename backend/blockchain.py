@@ -94,3 +94,46 @@ class Block:
             "nonce": self.nonce,
             "hash": self.hash,
         }
+
+
+class Blockchain:
+    """
+    The blockchain — a cryptographically linked list of blocks secured
+    by proof-of-work.
+
+    Attributes:
+        chain (list[Block]):           Ordered list of mined blocks.
+        difficulty (int):              PoW difficulty (leading zeros).
+        pending_transactions (list):   Transactions waiting to be mined.
+    """
+
+    def __init__(self, difficulty=4):
+        self.chain = []
+        self.difficulty = difficulty
+        self.pending_transactions = []
+
+        # Mine the genesis block
+        self.chain.append(self._create_genesis_block())
+
+    def _create_genesis_block(self):
+        """Create and mine the first block (index 0, previous_hash '0')."""
+        genesis = Block(
+            index=0,
+            timestamp=time(),
+            transactions=[{"type": "genesis", "message": "BlockVerify Genesis Block"}],
+            previous_hash="0",
+        )
+        genesis.mine_block(self.difficulty)
+        return genesis
+
+    def get_latest_block(self):
+        """Return the most recent block in the chain."""
+        return self.chain[-1]
+
+    def add_transaction(self, transaction):
+        """
+        Add a transaction dict to the pending pool.
+
+        The transaction will be included in the next mined block.
+        """
+        self.pending_transactions.append(transaction)
