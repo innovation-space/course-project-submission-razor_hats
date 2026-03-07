@@ -162,3 +162,53 @@ class Blockchain:
         self.pending_transactions = []
 
         return new_block
+
+    def is_chain_valid(self):
+        """
+        Walk the entire chain and verify integrity.
+
+        Checks performed on every block (except genesis):
+            1. Recalculated hash matches stored hash (tamper check).
+            2. ``previous_hash`` matches the preceding block's hash (link check).
+            3. Hash satisfies the difficulty requirement (PoW check).
+
+        Genesis-specific checks:
+            - index == 0
+            - previous_hash == "0"
+
+        Returns:
+            dict: {"valid": bool, "errors": list[str]}
+        """
+        errors = []
+
+        # --- Genesis checks ---
+        genesis = self.chain[0]
+        if genesis.index != 0:
+            errors.append("Genesis block has wrong index")
+        if genesis.previous_hash != "0":
+            errors.append("Genesis block has wrong previous_hash")
+
+        # --- Walk the rest of the chain ---
+        for i in range(1, len(self.chain)):
+            current = self.chain[i]
+            previous = self.chain[i - 1]
+
+            # Check 1 – hash integrity
+            if current.hash != current.calculate_hash():
+                errors.append(
+                    f"Block {i}: Hash is invalid (block data was tampered)"
+                )
+
+            # Check 2 – chain link
+            if current.previous_hash != previous.hash:
+                errors.append(
+                    f"Block {i}: previous_hash doesn't match previous block's hash"
+                )
+
+            # Check 3 – proof-of-work
+            if not current.hash.startswith("0" * self.difficulty):
+                errors.append(
+                    f"Block {i}: Hash doesn't meet difficulty requirement"
+                )
+
+        return {"valid": len(errors) == 0, "errors": errors}
