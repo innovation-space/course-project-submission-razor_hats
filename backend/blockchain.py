@@ -212,3 +212,16 @@ class Blockchain:
                 )
 
         return {"valid": len(errors) == 0, "errors": errors}
+
+    def get_chain(self):
+        """Return the full chain as a list of dicts."""
+        return [block.to_dict() for block in self.chain]
+
+    def get_stats(self):
+        """Return high-level blockchain statistics."""
+        return {
+            "total_blocks": len(self.chain),
+            "difficulty": self.difficulty,
+            "pending_transactions": len(self.pending_transactions),
+            "latest_block_hash": self.get_latest_block().hash,
+        }
