@@ -161,3 +161,50 @@ class TestBlockchain:
             bc.add_transaction({"i": i})
         assert len(bc.pending_transactions) == 5
 
+    # ---------- Mining ----------
+
+    def test_mine_block(self):
+        """Mining should add a block and clear the pending pool."""
+        bc = self._make_chain()
+        bc.add_transaction({"test": "data"})
+        block = bc.mine_pending_transactions()
+
+        assert len(bc.chain) == 2
+        assert block.index == 1
+        assert len(bc.pending_transactions) == 0
+
+    def test_mine_returns_none_when_empty(self):
+        bc = self._make_chain()
+        assert bc.mine_pending_transactions() is None
+
+    def test_mined_block_contains_transactions(self):
+        bc = self._make_chain()
+        bc.add_transaction({"a": 1})
+        bc.add_transaction({"b": 2})
+        block = bc.mine_pending_transactions()
+        assert len(block.transactions) == 2
+
+    def test_mined_block_meets_difficulty(self):
+        bc = self._make_chain()
+        bc.add_transaction({"t": "d"})
+        block = bc.mine_pending_transactions()
+        assert block.hash.startswith("0" * self.DIFFICULTY)
+
+    def test_mine_multiple_blocks(self):
+        bc = self._make_chain()
+        for i in range(4):
+            bc.add_transaction({"block": i})
+            bc.mine_pending_transactions()
+        assert len(bc.chain) == 5  # genesis + 4
+
+    # ---------- Chain Linking ----------
+
+    def test_chain_linking(self):
+        """Each block's previous_hash must equal the preceding block's hash."""
+        bc = self._make_chain()
+        for i in range(3):
+            bc.add_transaction({"i": i})
+            bc.mine_pending_transactions()
+
+        for i in range(1, len(bc.chain)):
+            assert bc.chain[i].previous_hash == bc.chain[i - 1].hash
