@@ -208,3 +208,65 @@ class TestBlockchain:
 
         for i in range(1, len(bc.chain)):
             assert bc.chain[i].previous_hash == bc.chain[i - 1].hash
+
+    # ---------- Validation – Valid Chain ----------
+
+    def test_valid_chain(self):
+        bc = self._make_chain()
+        for i in range(3):
+            bc.add_transaction({"i": i})
+            bc.mine_pending_transactions()
+
+        result = bc.is_chain_valid()
+        assert result["valid"] is True
+        assert result["errors"] == []
+
+    def test_genesis_only_chain_is_valid(self):
+        bc = self._make_chain()
+        assert bc.is_chain_valid()["valid"] is True
+
+    # ---------- Validation – Tampered Block (CRITICAL) ----------
+
+    def test_tamper_detection_data(self):
+        """Modifying a block's transaction data must be detected."""
+        bc = self._make_chain()
+        bc.add_transaction({"original": "data"})
+        bc.mine_pending_transactions()
+        bc.add_transaction({"more": "data"})
+        bc.mine_pending_transactions()
+
+        # TAMPER
+        bc.chain[1].transactions[0]["original"] = "HACKED"
+
+        result = bc.is_chain_valid()
+        assert result["valid"] is False
+        assert any("tampered" in e.lower() for e in result["errors"])
+
+    def test_tamper_detection_hash_overwrite(self):
+        """Overwriting a block's hash field must be detected via link check."""
+        bc = self._make_chain()
+        bc.add_transaction({"x": 1})
+        bc.mine_pending_transactions()
+        bc.add_transaction({"y": 2})
+        bc.mine_pending_transactions()
+
+        # Overwrite hash (attacker tries to fake it)
+        bc.chain[1].hash = "0000fakehashabcdef1234567890abcdef1234567890abcdef1234567890abcd"
+
+        result = bc.is_chain_valid()
+        assert result["valid"] is False
+
+    # ---------- Validation – Broken Link ----------
+
+    def test_broken_chain_link(self):
+        """Setting an incorrect previous_hash must be detected."""
+        bc = self._make_chain()
+        for i in range(3):
+            bc.add_transaction({"i": i})
+            bc.mine_pending_transactions()
+
+        bc.chain[2].previous_hash = "invalid_link"
+
+        result = bc.is_chain_valid()
+        assert result["valid"] is False
+        assert any("previous_hash" in e.lower() for e in result["errors"])
