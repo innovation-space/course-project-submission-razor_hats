@@ -270,3 +270,24 @@ class TestBlockchain:
         result = bc.is_chain_valid()
         assert result["valid"] is False
         assert any("previous_hash" in e.lower() for e in result["errors"])
+
+    # ---------- Query helpers ----------
+
+    def test_get_latest_block(self):
+        bc = self._make_chain()
+        bc.add_transaction({"t": 1})
+        new_block = bc.mine_pending_transactions()
+        assert bc.get_latest_block() is new_block
+
+    def test_get_chain_returns_list_of_dicts(self):
+        bc = self._make_chain()
+        chain = bc.get_chain()
+        assert isinstance(chain, list)
+        assert all(isinstance(b, dict) for b in chain)
+
+    def test_get_stats(self):
+        bc = self._make_chain()
+        stats = bc.get_stats()
+        assert stats["total_blocks"] == 1
+        assert stats["difficulty"] == self.DIFFICULTY
+        assert "latest_block_hash" in stats
