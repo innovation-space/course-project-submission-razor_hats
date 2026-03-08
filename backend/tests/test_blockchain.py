@@ -108,3 +108,56 @@ class TestBlock:
         import json
         b = Block(0, time(), [{"key": "value"}], "0")
         json.dumps(b.to_dict())  # Should not raise
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Blockchain Tests
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestBlockchain:
+    """Unit tests for the Blockchain class."""
+
+    # Use low difficulty for fast tests
+    DIFFICULTY = 2
+
+    def _make_chain(self):
+        return Blockchain(difficulty=self.DIFFICULTY)
+
+    # ---------- Genesis ----------
+
+    def test_genesis_block_exists(self):
+        """A new blockchain should contain exactly one (genesis) block."""
+        bc = self._make_chain()
+        assert len(bc.chain) == 1
+
+    def test_genesis_block_index_zero(self):
+        bc = self._make_chain()
+        assert bc.chain[0].index == 0
+
+    def test_genesis_previous_hash_is_zero(self):
+        bc = self._make_chain()
+        assert bc.chain[0].previous_hash == "0"
+
+    def test_genesis_hash_meets_difficulty(self):
+        bc = self._make_chain()
+        assert bc.chain[0].hash.startswith("0" * self.DIFFICULTY)
+
+    def test_genesis_has_genesis_transaction(self):
+        bc = self._make_chain()
+        assert bc.chain[0].transactions[0]["type"] == "genesis"
+
+    # ---------- Transactions ----------
+
+    def test_add_transaction(self):
+        """Transactions go into the pending pool."""
+        bc = self._make_chain()
+        bc.add_transaction({"type": "test", "value": 42})
+        assert len(bc.pending_transactions) == 1
+
+    def test_add_multiple_transactions(self):
+        bc = self._make_chain()
+        for i in range(5):
+            bc.add_transaction({"i": i})
+        assert len(bc.pending_transactions) == 5
+
