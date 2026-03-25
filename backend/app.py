@@ -280,5 +280,23 @@ def get_model(model_id):
     return jsonify({"success": True, "model": model}), 200
 
 
+@app.route("/api/versions/<model_id>", methods=["GET"])
+def get_versions(model_id):
+    """Return version history for a model."""
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+    return jsonify({"success": True, "versions": model["versions"], "currentVersion": model["currentVersion"]}), 200
+
+
+@app.route("/api/audit/<model_id>", methods=["GET"])
+def get_audit_log(model_id):
+    """Return the verification audit trail for a model."""
+    if model_id not in verification_logs:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+    logs = verification_logs[model_id]
+    return jsonify({"success": True, "verifications": logs, "count": len(logs)}), 200
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
