@@ -83,3 +83,64 @@ class TestRegister:
         model = models_registry[data["modelId"]]
         assert model["currentVersion"] == 1
         assert len(model["versions"]) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /api/verify
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestVerify:
+
+    def test_verify_valid(self, client):
+        # Register first, then verify with the exact same hash — should pass
+        model_id = _register(client, hash_val="correct").get_json()["modelId"]
+        resp = client.post(
+            "/api/verify",
+            json={"modelId": model_id, "providedHash": "correct", "verifier": "bob"},
+        )
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data["isValid"] is True
+
+    def test_verify_invalid(self, client):
+        # Provide a wrong hash — integrity check should fail
+        model_id = _register(client, hash_val="correct").get_json()["modelId"]
+        resp = client.post(
+            "/api/verify",
+            json={"modelId": model_id, "providedHash": "WRONG", "verifier": "bob"},
+        )
+        data = resp.get_json()
+        assert data["isValid"] is False
+
+    def test_verify_nonexistent_model(self, client):
+        resp = client.post(
+            "/api/verify",
+            json={"modelId": "ghost", "providedHash": "h", "verifier": "bob"},
+        )
+        assert resp.status_code == 404
+
+    def test_verify_missing_model_id(self, client):
+        resp = client.post("/api/verify", json={"providedHash": "h"})
+        assert resp.status_code == 400
+
+    def test_verify_missing_hash(self, client):
+        resp = client.post("/api/verify", json={"modelId": "x"})
+        assert resp.status_code == 400
+
+    def test_verify_creates_block(self, client):
+        # Each verification should mine a new block
+        model_id = _register(client).get_json()["modelId"]
+        before = len(blockchain.chain)
+        client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123"})
+        assert len(blockchain.chain) == before + 1
+
+    def test_verify_logged_in_audit(self, client):
+        # Verification result should be saved to the audit log
+        model_id = _register(client).get_json()["modelId"]
+        client.post(
+            "/api/verify",
+            json={"modelId": model_id, "providedHash": "abc123", "verifier": "carol"},
+        )
+        assert len(verification_logs[model_id]) == 1
+        assert verification_logs[model_id][0]["verifier"] == "carol"
