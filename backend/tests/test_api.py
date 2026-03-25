@@ -281,3 +281,71 @@ class TestChainEndpoints:
         client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123"})
         data = client.get("/api/stats").get_json()
         assert data["totalVerifications"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /api/deactivate
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestDeactivate:
+
+    def test_deactivate_success(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post("/api/deactivate", json={"modelId": model_id, "owner": "alice"})
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is True
+
+    def test_deactivate_wrong_owner(self, client):
+        # A different user should not be allowed to deactivate someone else's model
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post("/api/deactivate", json={"modelId": model_id, "owner": "mallory"})
+        assert resp.status_code == 403
+
+    def test_deactivate_not_found(self, client):
+        resp = client.post("/api/deactivate", json={"modelId": "ghost", "owner": "alice"})
+        assert resp.status_code == 404
+
+    def test_verify_deactivated_model_fails(self, client):
+        # Once deactivated, the model should no longer be verifiable
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        client.post("/api/deactivate", json={"modelId": model_id, "owner": "alice"})
+        resp = client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123", "verifier": "bob"})
+        assert resp.status_code == 400
+
+    def test_add_version_deactivated_fails(self, client):
+        # A deactivated model should also block new version uploads
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        client.post("/api/deactivate", json={"modelId": model_id, "owner": "alice"})
+        resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "h", "changelog": "c", "owner": "alice"})
+        assert resp.status_code == 400
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Edge cases
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestEdgeCases:
+
+    def test_add_version_missing_changelog(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "h", "owner": "alice"})
+        assert resp.status_code == 400
+
+    def test_add_version_missing_hash(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post("/api/add-version", json={"modelId": model_id, "changelog": "c", "owner": "alice"})
+        assert resp.status_code == 400
+
+    def test_add_version_missing_owner(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "h", "changelog": "c"})
+        assert resp.status_code == 400
+
+    def test_multiple_versions_increment(self, client):
+        # Each new version should increment the version counter by exactly 1
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        client.post("/api/add-version", json={"modelId": model_id, "newHash": "v2", "changelog": "v2", "owner": "alice"})
+        resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "v3", "changelog": "v3", "owner": "alice"})
+        assert resp.get_json()["version"] == 3
