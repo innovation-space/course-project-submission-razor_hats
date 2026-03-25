@@ -112,5 +112,128 @@ def register_model():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/verify", methods=["POST"])
+def verify_model():
+    """Verify AI model integrity against the stored hash."""
+    try:
+        data = request.get_json()
+
+        if not data.get("modelId"):
+            return jsonify({"success": False, "error": "Model ID is required"}), 400
+        if not data.get("providedHash"):
+            return jsonify({"success": False, "error": "Hash is required"}), 400
+
+        model = models_registry.get(data["modelId"])
+        if not model:
+            return jsonify({"success": False, "error": "Model not found"}), 404
+        if not model["isActive"]:
+            return jsonify({"success": False, "error": "Model is deactivated"}), 400
+
+        is_valid = model["modelHash"] == data["providedHash"]
+
+        tx = {
+            "type": "verify",
+            "modelId": data["modelId"],
+            "providedHash": data["providedHash"],
+            "storedHash": model["modelHash"],
+            "isValid": is_valid,
+            "verifier": data.get("verifier", "anonymous"),
+            "timestamp": time(),
+        }
+
+        blockchain.add_transaction(tx)
+        new_block = blockchain.mine_pending_transactions()
+
+        verification_logs[data["modelId"]].append(
+            {
+                "verifier": tx["verifier"],
+                "timestamp": tx["timestamp"],
+                "isValid": is_valid,
+                "providedHash": data["providedHash"],
+                "blockIndex": new_block.index,
+            }
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "isValid": is_valid,
+                "message": "Model integrity VERIFIED — hash matches"
+                if is_valid
+                else "INTEGRITY MISMATCH — hash does not match",
+                "blockIndex": new_block.index,
+                "storedHash": model["modelHash"],
+                "providedHash": data["providedHash"],
+            }
+        ), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/add-version", methods=["POST"])
+def add_version():
+    """Add a new version to an existing model."""
+    try:
+        data = request.get_json()
+
+        if not data.get("modelId"):
+            return jsonify({"success": False, "error": "Model ID is required"}), 400
+        if not data.get("newHash"):
+            return jsonify({"success": False, "error": "New hash is required"}), 400
+        if not data.get("changelog"):
+            return jsonify({"success": False, "error": "Changelog is required"}), 400
+        if not data.get("owner"):
+            return jsonify({"success": False, "error": "Owner is required"}), 400
+
+        model = models_registry.get(data["modelId"])
+        if not model:
+            return jsonify({"success": False, "error": "Model not found"}), 404
+        if model["owner"] != data["owner"]:
+            return jsonify({"success": False, "error": "Only the model owner can add versions"}), 403
+        if not model["isActive"]:
+            return jsonify({"success": False, "error": "Model is deactivated"}), 400
+
+        new_ver = model["currentVersion"] + 1
+
+        tx = {
+            "type": "add_version",
+            "modelId": data["modelId"],
+            "version": new_ver,
+            "newHash": data["newHash"],
+            "previousHash": model["modelHash"],
+            "changelog": data["changelog"],
+            "owner": data["owner"],
+            "timestamp": time(),
+        }
+
+        blockchain.add_transaction(tx)
+        new_block = blockchain.mine_pending_transactions()
+
+        model["modelHash"] = data["newHash"]
+        model["currentVersion"] = new_ver
+        model["versions"].append(
+            {
+                "version": new_ver,
+                "hash": data["newHash"],
+                "timestamp": tx["timestamp"],
+                "changelog": data["changelog"],
+                "blockIndex": new_block.index,
+            }
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "version": new_ver,
+                "blockIndex": new_block.index,
+                "message": f"Version {new_ver} added successfully",
+            }
+        ), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
