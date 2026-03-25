@@ -198,3 +198,173 @@
 
 <!-- ═══════════ App ═══════════ -->
 <div class="app">
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card"><div class="stat-val" id="sModels">0</div><div class="stat-lbl">Models Registered</div></div>
+    <div class="stat-card"><div class="stat-val" id="sVerify">0</div><div class="stat-lbl">Verifications</div></div>
+    <div class="stat-card"><div class="stat-val" id="sBlocks">0</div><div class="stat-lbl">Blockchain Blocks</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('register',this)">📝 Register</button>
+    <button class="tab" onclick="switchTab('verify',this)">✅ Verify</button>
+    <button class="tab" onclick="switchTab('versions',this)">📋 Versions</button>
+    <button class="tab" onclick="switchTab('audit',this)">🔍 Audit Trail</button>
+    <button class="tab" onclick="switchTab('models',this)">📦 My Models</button>
+    <button class="tab" onclick="switchTab('explorer',this)">🔗 Explorer</button>
+  </div>
+
+  <!-- ═══ Register ═══ -->
+  <div class="tab-content active" id="tab-register">
+    <div class="card">
+      <h2>📝 Register AI Model</h2>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem;">Upload a model file to compute its SHA-256 hash and register it on the blockchain.</p>
+      <div class="fg">
+        <label>Model File</label>
+        <div class="file-drop" id="regDrop" onclick="document.getElementById('regFile').click()">
+          <p>📂 Click or drag &amp; drop a model file</p>
+          <div class="file-name" id="regFN"></div>
+        </div>
+        <input type="file" id="regFile" style="display:none" onchange="onFile('reg')">
+      </div>
+      <div id="regHashWrap" style="display:none">
+        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
+        <div class="hash-box" id="regHash"></div>
+      </div>
+      <div class="fg" style="margin-top:.75rem"><label>Model Name *</label><input type="text" id="regName" placeholder="e.g. ResNet50-Health-v1"></div>
+      <div class="fg"><label>Metadata (optional)</label><textarea id="regMeta" placeholder="IPFS CID, description, etc."></textarea></div>
+      <button class="btn" id="regBtn" onclick="registerModel()">Register Model</button>
+      <div class="status" id="regStatus"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Verify ═══ -->
+  <div class="tab-content" id="tab-verify">
+    <div class="card">
+      <h2>✅ Verify Model Integrity</h2>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem;">Upload a model file and provide its Model ID to check against the blockchain record.</p>
+      <div class="fg">
+        <label>Model File</label>
+        <div class="file-drop" id="verDrop" onclick="document.getElementById('verFile').click()">
+          <p>📂 Click or drag &amp; drop the model file</p>
+          <div class="file-name" id="verFN"></div>
+        </div>
+        <input type="file" id="verFile" style="display:none" onchange="onFile('ver')">
+      </div>
+      <div id="verHashWrap" style="display:none">
+        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
+        <div class="hash-box" id="verHash"></div>
+      </div>
+      <div class="fg" style="margin-top:.75rem"><label>Model ID</label><input type="text" id="verModelId" placeholder="Paste the model ID you received at registration"></div>
+      <button class="btn" onclick="verifyModel()">Verify Integrity</button>
+      <div class="status" id="verStatus"></div>
+      <div id="verResult"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Versions ═══ -->
+  <div class="tab-content" id="tab-versions">
+    <div class="card">
+      <h2>📋 Version History</h2>
+      <div class="fg"><label>Model ID</label><input type="text" id="vhModelId" placeholder="Model ID"></div>
+      <button class="btn btn-sec" onclick="loadVersions()">Load History</button>
+      <div id="vhResult"></div>
+    </div>
+    <div class="card">
+      <h2>➕ Add New Version</h2>
+      <div class="fg"><label>Model ID</label><input type="text" id="avModelId" placeholder="Model ID"></div>
+      <div class="fg">
+        <label>New Model File</label>
+        <div class="file-drop" id="avDrop" onclick="document.getElementById('avFile').click()">
+          <p>📂 Select the updated model file</p>
+          <div class="file-name" id="avFN"></div>
+        </div>
+        <input type="file" id="avFile" style="display:none" onchange="onFile('av')">
+      </div>
+      <div id="avHashWrap" style="display:none">
+        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
+        <div class="hash-box" id="avHash"></div>
+      </div>
+      <div class="fg" style="margin-top:.75rem"><label>Changelog *</label><textarea id="avLog" placeholder="Describe changes in this version..."></textarea></div>
+      <button class="btn" onclick="addVersion()">Add Version</button>
+      <div class="status" id="avStatus"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Audit ═══ -->
+  <div class="tab-content" id="tab-audit">
+    <div class="card">
+      <h2>🔍 Verification Audit Trail</h2>
+      <div class="fg"><label>Model ID</label><input type="text" id="auditId" placeholder="Model ID"></div>
+      <button class="btn btn-sec" onclick="loadAudit()">Load Audit Trail</button>
+      <div id="auditResult"></div>
+    </div>
+  </div>
+
+  <!-- ═══ My Models ═══ -->
+  <div class="tab-content" id="tab-models">
+    <div class="card">
+      <h2>📦 My Registered Models</h2>
+      <button class="btn btn-sec" onclick="loadMyModels()">Refresh</button>
+      <div id="modelsResult" style="margin-top:.75rem;"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Blockchain Explorer ═══ -->
+  <div class="tab-content" id="tab-explorer">
+    <div class="card">
+      <h2>🔗 Blockchain Explorer</h2>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+        <button class="btn btn-sec" onclick="loadChain()">Refresh Chain</button>
+        <button class="btn" onclick="validateChain()">Validate Chain Integrity</button>
+      </div>
+      <div id="chainValid" style="margin-top:.75rem;"></div>
+      <div id="chainView" style="margin-top:.75rem;"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ JavaScript ═══════════ -->
+<script>
+const API = 'http://localhost:5000/api';
+const hashes = {};  // section → computed hash hex string
+
+// ────────── Helpers ──────────
+
+function getUser() {
+  const u = document.getElementById('username').value.trim();
+  if (!u) { alert('Please enter a username first.'); return null; }
+  return u;
+}
+
+function status(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = 'status show ' + type;
+  el.innerHTML = msg;
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ────────── SHA-256 file hashing ──────────
+
+// Pure JS SHA-256 fallback for non-secure contexts (e.g. 0.0.0.0)
+function sha256Fallback(buffer) {
+  const K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  ];
+  const rr = (v,n) => (v>>>n)|(v<<(32-n));
