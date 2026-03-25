@@ -602,8 +602,8 @@ async function validateChain() {
     const res = await fetch(API + '/chain/validate');
     const d = await res.json();
     let h = d.isValid
-      ? '<div class="status show ok">✅ Blockchain is valid — all blocks pass integrity checks.</div>'
-      : '<div class="status show err">❌ Blockchain has integrity errors!</div>';
+      ? '<div class="status show ok">✅ Blockchain is valid — all blocks pass integrity checks fully.</div>'
+      : '<div class="status show err">❌ Blockchain has integrity errors please see to it!</div>';
     if (d.errors && d.errors.length) {
       h += '<ul style="margin-top:.5rem;padding-left:1.2rem;font-size:.85rem;color:var(--danger);">';
       d.errors.forEach(e => h += `<li>${e}</li>`);
@@ -613,7 +613,7 @@ async function validateChain() {
   } catch(e) { document.getElementById('chainValid').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
 }
 
-// ────────── Init ──────────
+// ────────── Init ────────
 loadStats();
 setInterval(loadStats, 5000);
 </script>
