@@ -528,3 +528,94 @@ async function addVersion() {
       body: JSON.stringify({ modelId, newHash:hash, changelog:log, owner:user })
     });
     const d = await res.json();
+    if (d.success) {
+      status('avStatus','ok',`✅ Version ${d.version} added (Block #${d.blockIndex})`);
+      document.getElementById('avLog').value=''; document.getElementById('avFN').textContent='';
+      document.getElementById('avHashWrap').style.display='none'; hashes.av=null;
+      loadStats();
+    } else { status('avStatus','err','❌ ' + d.error); }
+  } catch(e) { status('avStatus','err','❌ ' + e.message); }
+}
+
+// ────────── Audit Trail ──────────
+
+async function loadAudit() {
+  const id = document.getElementById('auditId').value.trim();
+  if (!id) return;
+  try {
+    const res = await fetch(API + '/audit/' + id);
+    const d = await res.json();
+    if (!d.success) { document.getElementById('auditResult').innerHTML=`<div class="status show err">❌ ${d.error}</div>`; return; }
+    if (d.count === 0) { document.getElementById('auditResult').innerHTML='<p style="color:var(--text-muted);margin-top:.6rem;">No verifications yet.</p>'; return; }
+    let h = '<table class="tbl"><tr><th>Verifier</th><th>Hash Provided</th><th>Result</th><th>Block</th></tr>';
+    d.verifications.forEach(v => {
+      h += `<tr><td>${v.verifier}</td><td><code style="font-family:var(--mono);font-size:.72rem;">${v.providedHash.substring(0,16)}…</code></td>
+        <td>${v.isValid?'<span class="badge badge-ok">Valid</span>':'<span class="badge badge-err">Invalid</span>'}</td><td>${v.blockIndex}</td></tr>`;
+    });
+    h += '</table>';
+    document.getElementById('auditResult').innerHTML = h;
+  } catch(e) { document.getElementById('auditResult').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+}
+
+// ────────── My Models ──────────
+
+async function loadMyModels() {
+  const user = getUser(); if (!user) return;
+  try {
+    const res = await fetch(API + '/models/' + user);
+    const d = await res.json();
+    if (d.count === 0) { document.getElementById('modelsResult').innerHTML='<p style="color:var(--text-muted);">No models registered yet.</p>'; return; }
+    let h = '<table class="tbl"><tr><th>Model ID</th><th>Name</th><th>Hash</th><th>Version</th><th>Block</th></tr>';
+    d.models.forEach(m => {
+      h += `<tr><td><code style="font-family:var(--mono);font-size:.72rem;">${m.modelId}</code></td><td>${m.modelName}</td>
+        <td><code style="font-family:var(--mono);font-size:.72rem;">${m.modelHash.substring(0,16)}…</code></td><td>${m.currentVersion}</td><td>${m.blockIndex}</td></tr>`;
+    });
+    h += '</table>';
+    document.getElementById('modelsResult').innerHTML = h;
+  } catch(e) { document.getElementById('modelsResult').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+}
+
+// ────────── Blockchain Explorer ──────────
+
+async function loadChain() {
+  try {
+    const res = await fetch(API + '/chain');
+    const d = await res.json();
+    if (!d.success) return;
+    let h = `<p style="color:var(--text-muted);margin-bottom:.6rem;">Showing <strong>${d.length}</strong> blocks</p>`;
+    d.chain.forEach(b => {
+      const date = new Date(b.timestamp * 1000).toLocaleString();
+      h += `<div class="block-card">
+        <div class="block-hdr"><strong>Block #${b.index}</strong><span>${date}</span></div>
+        <div class="block-row"><strong>Hash: </strong><code>${b.hash}</code></div>
+        <div class="block-row"><strong>Prev: </strong><code>${b.previous_hash}</code></div>
+        <div class="block-row"><strong>Nonce: </strong>${b.nonce.toLocaleString()} &nbsp;|&nbsp; <strong>Txns: </strong>${b.transactions.length}</div>
+        <details><summary>View Transactions</summary><pre>${JSON.stringify(b.transactions,null,2)}</pre></details>
+      </div>`;
+    });
+    document.getElementById('chainView').innerHTML = h;
+  } catch(e) { document.getElementById('chainView').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+}
+
+async function validateChain() {
+  try {
+    const res = await fetch(API + '/chain/validate');
+    const d = await res.json();
+    let h = d.isValid
+      ? '<div class="status show ok">✅ Blockchain is valid — all blocks pass integrity checks.</div>'
+      : '<div class="status show err">❌ Blockchain has integrity errors!</div>';
+    if (d.errors && d.errors.length) {
+      h += '<ul style="margin-top:.5rem;padding-left:1.2rem;font-size:.85rem;color:var(--danger);">';
+      d.errors.forEach(e => h += `<li>${e}</li>`);
+      h += '</ul>';
+    }
+    document.getElementById('chainValid').innerHTML = h;
+  } catch(e) { document.getElementById('chainValid').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+}
+
+// ────────── Init ──────────
+loadStats();
+setInterval(loadStats, 5000);
+</script>
+</body>
+</html>
