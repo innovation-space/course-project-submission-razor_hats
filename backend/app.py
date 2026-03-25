@@ -257,5 +257,28 @@ def deactivate_model():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ------------------------------------------------------------------ #
+#  READ endpoints                                                      #
+# ------------------------------------------------------------------ #
+
+@app.route("/api/models/<owner>", methods=["GET"])
+def get_models_by_owner(owner):
+    """Return all models registered by *owner*."""
+    try:
+        owner_models = [m for m in models_registry.values() if m["owner"] == owner]
+        return jsonify({"success": True, "models": owner_models, "count": len(owner_models)}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/model/<model_id>", methods=["GET"])
+def get_model(model_id):
+    """Return details of a single model."""
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+    return jsonify({"success": True, "model": model}), 200
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
