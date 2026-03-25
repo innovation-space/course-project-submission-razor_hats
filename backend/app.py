@@ -298,5 +298,49 @@ def get_audit_log(model_id):
     return jsonify({"success": True, "verifications": logs, "count": len(logs)}), 200
 
 
+@app.route("/api/chain", methods=["GET"])
+def get_chain():
+    """Return the entire blockchain."""
+    return jsonify({"success": True, "chain": blockchain.get_chain(), "length": len(blockchain.chain)}), 200
+
+
+@app.route("/api/chain/validate", methods=["GET"])
+def validate_chain():
+    """Validate blockchain integrity and return errors (if any)."""
+    result = blockchain.is_chain_valid()
+    return jsonify(
+        {
+            "success": True,
+            "isValid": result["valid"],
+            "errors": result["errors"],
+            "message": "Blockchain is valid ✓" if result["valid"] else "Blockchain has integrity errors ✗",
+        }
+    ), 200
+
+
+@app.route("/api/stats", methods=["GET"])
+def get_stats():
+    """Return high-level platform statistics."""
+    total_verifications = sum(len(v) for v in verification_logs.values())
+    return jsonify(
+        {
+            "totalModels": len(models_registry),
+            "totalVerifications": total_verifications,
+            "totalBlocks": len(blockchain.chain),
+        }
+    ), 200
+
+
+# ------------------------------------------------------------------ #
+#  Server start                                                        #
+# ------------------------------------------------------------------ #
+
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    print("══════════════════════════════════════════════")
+    print("  🔗 BlockVerify — Custom Blockchain Server")
+    print("══════════════════════════════════════════════")
+    print(f"  Difficulty  : {blockchain.difficulty} leading zeros")
+    print(f"  Genesis hash: {blockchain.get_latest_block().hash}")
+    print("  Server      : http://localhost:5000")
+    print("══════════════════════════════════════════════")
+    app.run(debug=True, port=5000)
