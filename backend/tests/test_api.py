@@ -144,3 +144,140 @@ class TestVerify:
         )
         assert len(verification_logs[model_id]) == 1
         assert verification_logs[model_id][0]["verifier"] == "carol"
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /api/add-version
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestAddVersion:
+
+    def test_add_version_success(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post(
+            "/api/add-version",
+            json={"modelId": model_id, "newHash": "v2hash", "changelog": "fix bug", "owner": "alice"},
+        )
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data["version"] == 2
+
+    def test_add_version_wrong_owner(self, client):
+        # Only the original owner should be allowed to add versions
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post(
+            "/api/add-version",
+            json={"modelId": model_id, "newHash": "v2", "changelog": "c", "owner": "mallory"},
+        )
+        assert resp.status_code == 403
+
+    def test_add_version_updates_hash(self, client):
+        # After adding a version, the model's stored hash should be the new one
+        model_id = _register(client, hash_val="old", owner="alice").get_json()["modelId"]
+        client.post(
+            "/api/add-version",
+            json={"modelId": model_id, "newHash": "new", "changelog": "c", "owner": "alice"},
+        )
+        assert models_registry[model_id]["modelHash"] == "new"
+
+    def test_add_version_not_found(self, client):
+        resp = client.post(
+            "/api/add-version",
+            json={"modelId": "nope", "newHash": "h", "changelog": "c", "owner": "a"},
+        )
+        assert resp.status_code == 404
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  READ endpoints
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestReadEndpoints:
+
+    def test_get_models_by_owner(self, client):
+        _register(client, name="M1", owner="alice")
+        _register(client, name="M2", owner="alice")
+        _register(client, name="M3", owner="bob")
+
+        resp = client.get("/api/models/alice")
+        data = resp.get_json()
+        assert data["count"] == 2
+
+    def test_get_models_empty(self, client):
+        resp = client.get("/api/models/nobody")
+        assert resp.get_json()["count"] == 0
+
+    def test_get_model_detail(self, client):
+        model_id = _register(client, name="Detail").get_json()["modelId"]
+        resp = client.get(f"/api/model/{model_id}")
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["model"]["modelName"] == "Detail"
+
+    def test_get_model_not_found(self, client):
+        assert client.get("/api/model/ghost").status_code == 404
+
+    def test_get_versions(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        client.post(
+            "/api/add-version",
+            json={"modelId": model_id, "newHash": "v2", "changelog": "v2 log", "owner": "alice"},
+        )
+        resp = client.get(f"/api/versions/{model_id}")
+        data = resp.get_json()
+        assert data["currentVersion"] == 2
+        assert len(data["versions"]) == 2
+
+    def test_get_audit_log(self, client):
+        model_id = _register(client).get_json()["modelId"]
+        client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123", "verifier": "v"})
+        client.post("/api/verify", json={"modelId": model_id, "providedHash": "wrong", "verifier": "v"})
+
+        resp = client.get(f"/api/audit/{model_id}")
+        data = resp.get_json()
+        assert data["count"] == 2
+
+    def test_get_audit_not_found(self, client):
+        assert client.get("/api/audit/ghost").status_code == 404
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Chain endpoints
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestChainEndpoints:
+
+    def test_get_chain(self, client):
+        resp = client.get("/api/chain")
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["length"] >= 1
+
+    def test_get_chain_grows_after_register(self, client):
+        # Each registration mines a block, so chain length should increase
+        before = client.get("/api/chain").get_json()["length"]
+        _register(client)
+        after = client.get("/api/chain").get_json()["length"]
+        assert after == before + 1
+
+    def test_validate_chain_valid(self, client):
+        _register(client)
+        resp = client.get("/api/chain/validate")
+        data = resp.get_json()
+        assert data["isValid"] is True
+
+    def test_get_stats(self, client):
+        _register(client)
+        resp = client.get("/api/stats")
+        data = resp.get_json()
+        assert data["totalModels"] == 1
+        assert data["totalBlocks"] >= 2
+
+    def test_stats_count_verifications(self, client):
+        model_id = _register(client).get_json()["modelId"]
+        client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123"})
+        data = client.get("/api/stats").get_json()
+        assert data["totalVerifications"] == 1
