@@ -338,6 +338,7 @@ def get_stats():
 if __name__ == "__main__":
     print("══════════════════════════════════════════════")
     print("  🔗 BlockVerify — Custom Blockchain Server")
+    print("  (Milestone 2 Final Submission Version)")
     print("══════════════════════════════════════════════")
     print(f"  Difficulty  : {blockchain.difficulty} leading zeros")
     print(f"  Genesis hash: {blockchain.get_latest_block().hash}")
