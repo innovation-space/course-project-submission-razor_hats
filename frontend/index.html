@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlockVerify — AI Model Integrity Verification</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════ Reset & Variables ═══════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #080b12;
+      --surface:    #0f1420;
+      --surface2:   #171d2e;
+      --border:     #252d42;
+      --text:       #e8eaf0;
+      --text-muted: #7a829e;
+      --primary:    #6c5ce7;
+      --primary-h:  #a29bfe;
+      --success:    #00cec9;
+      --danger:     #ff6b6b;
+      --warn:       #feca57;
+      --radius:     10px;
+      --font:       'Outfit', sans-serif;
+      --mono:       'JetBrains Mono', monospace;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse at 20% 0%, rgba(108,92,231,.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 100%, rgba(0,206,201,.06) 0%, transparent 50%);
+    }
+
+    /* ═══════════ Header ═══════════ */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: .9rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: .75rem;
+    }
+    .logo { display: flex; align-items: center; gap: .6rem; font-size: 1.35rem; font-weight: 700; letter-spacing: -.02em; }
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--primary), var(--success));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+    .user-box { display: flex; align-items: center; gap: .5rem; }
+    .user-box label { font-size: .82rem; color: var(--text-muted); }
+    .user-box input {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+      padding: .4rem .7rem; color: var(--text); font-family: var(--font); font-size: .88rem; width: 150px;
+    }
+    .user-box input:focus { outline: none; border-color: var(--primary); }
+
+    /* ═══════════ Layout ═══════════ */
+    .app { max-width: 1060px; margin: 0 auto; padding: 1.5rem; }
+
+    /* ═══════════ Stats ═══════════ */
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin-bottom: 1.5rem; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1rem; text-align: center;
+    }
+    .stat-val { font-size: 1.8rem; font-weight: 700; color: var(--primary); }
+    .stat-lbl { font-size: .78rem; color: var(--text-muted); margin-top: .15rem; }
+
+    /* ═══════════ Tabs ═══════════ */
+    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; }
+    .tab {
+      background: none; border: none; color: var(--text-muted); padding: .65rem 1rem;
+      cursor: pointer; font-family: var(--font); font-size: .88rem; font-weight: 500;
+      border-bottom: 2px solid transparent; white-space: nowrap; transition: .2s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--primary-h); border-bottom-color: var(--primary); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn .25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ═══════════ Card ═══════════ */
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.4rem; margin-bottom: 1.25rem;
+    }
+    .card h2 { font-size: 1.1rem; margin-bottom: .85rem; display: flex; align-items: center; gap: .4rem; }
+
+    /* ═══════════ Forms ═══════════ */
+    .fg { margin-bottom: .85rem; }
+    .fg label { display: block; margin-bottom: .3rem; font-size: .8rem; color: var(--text-muted); font-weight: 500; }
+    input[type="text"], textarea {
+      width: 100%; padding: .6rem .8rem; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: var(--font); font-size: .88rem;
+    }
+    input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--primary); }
+    textarea { resize: vertical; min-height: 60px; }
+
+    .btn {
+      background: var(--primary); color: #fff; border: none; padding: .6rem 1.3rem; border-radius: 8px;
+      cursor: pointer; font-family: var(--font); font-size: .9rem; font-weight: 600; transition: .2s;
+      display: inline-flex; align-items: center; gap: .4rem;
+    }
+    .btn:hover { background: var(--primary-h); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-sec { background: var(--surface2); border: 1px solid var(--border); }
+    .btn-sec:hover { background: var(--border); }
+
+    /* ═══════════ File Drop ═══════════ */
+    .file-drop {
+      border: 2px dashed var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center;
+      cursor: pointer; transition: .2s;
+    }
+    .file-drop:hover, .file-drop.dragover { border-color: var(--primary); background: rgba(108,92,231,.06); }
+    .file-drop p { color: var(--text-muted); font-size: .88rem; }
+    .file-name { color: var(--success); font-weight: 600; margin-top: .4rem; font-size: .85rem; }
+
+    /* ═══════════ Hash Display ═══════════ */
+    .hash-box {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      padding: .55rem .75rem; font-family: var(--mono); font-size: .75rem;
+      word-break: break-all; color: var(--warn); margin-top: .4rem;
+    }
+
+    /* ═══════════ Status ═══════════ */
+    .status { padding: .7rem .9rem; border-radius: 8px; margin-top: .85rem; font-size: .88rem; display: none; }
+    .status.show { display: block; }
+    .status.ok   { background: rgba(0,206,201,.12); border: 1px solid var(--success); color: var(--success); }
+    .status.err  { background: rgba(255,107,107,.12); border: 1px solid var(--danger); color: var(--danger); }
+    .status.info { background: rgba(108,92,231,.12); border: 1px solid var(--primary); color: var(--primary-h); }
+
+    /* ═══════════ Tables ═══════════ */
+    .tbl { width: 100%; border-collapse: collapse; margin-top: .75rem; font-size: .82rem; }
+    .tbl th { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 500; }
+    .tbl td { padding: .5rem .6rem; border-bottom: 1px solid rgba(255,255,255,.03); }
+    .tbl tr:hover { background: rgba(255,255,255,.02); }
+
+    /* ═══════════ Badges ═══════════ */
+    .badge { display: inline-block; padding: .1rem .5rem; border-radius: 10px; font-size: .75rem; font-weight: 600; }
+    .badge-ok  { background: rgba(0,206,201,.18); color: var(--success); }
+    .badge-err { background: rgba(255,107,107,.18); color: var(--danger); }
+
+    /* ═══════════ Blockchain Explorer ═══════════ */
+    .block-card {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1rem; margin-bottom: .75rem; position: relative;
+    }
+    .block-card::before {
+      content: ''; position: absolute; top: -12px; left: 30px; width: 2px; height: 12px;
+      background: var(--primary); opacity: .5;
+    }
+    .block-card:first-child::before { display: none; }
+    .block-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+    .block-hdr strong { font-size: .95rem; }
+    .block-hdr span { font-size: .75rem; color: var(--text-muted); }
+    .block-row { font-size: .8rem; margin-bottom: .25rem; }
+    .block-row strong { color: var(--text-muted); font-weight: 500; }
+    .block-row code { font-family: var(--mono); font-size: .72rem; color: var(--warn); }
+    details { margin-top: .4rem; font-size: .78rem; }
+    details summary { cursor: pointer; color: var(--primary-h); }
+    details pre { background: var(--bg); padding: .5rem; border-radius: 6px; margin-top: .3rem; overflow-x: auto; font-size: .72rem; color: var(--text-muted); }
+
+    /* ═══════════ Spinner ═══════════ */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .5s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ═══════════ Responsive ═══════════ */
+    @media (max-width: 700px) {
+      .header { flex-direction: column; }
+      .stats { grid-template-columns: 1fr; }
+      .tabs { gap: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════ Header ═══════════ -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">🔗</div>
+    <span>BlockVerify</span>
+  </div>
+  <div class="user-box">
+    <label>Username:</label>
+    <input type="text" id="username" placeholder="e.g. alice" />
+  </div>
+</header>
+
+<!-- ═══════════ App ═══════════ -->
+<div class="app">
