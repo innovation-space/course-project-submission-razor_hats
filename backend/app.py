@@ -235,5 +235,27 @@ def add_version():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/deactivate", methods=["POST"])
+def deactivate_model():
+    """Soft-delete (deactivate) a model."""
+    try:
+        data = request.get_json()
+        model = models_registry.get(data.get("modelId"))
+        if not model:
+            return jsonify({"success": False, "error": "Model not found"}), 404
+        if model["owner"] != data.get("owner"):
+            return jsonify({"success": False, "error": "Only the owner can deactivate"}), 403
+
+        model["isActive"] = False
+
+        tx = {"type": "deactivate", "modelId": data["modelId"], "owner": data["owner"], "timestamp": time()}
+        blockchain.add_transaction(tx)
+        blockchain.mine_pending_transactions()
+
+        return jsonify({"success": True, "message": "Model deactivated"}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
