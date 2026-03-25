@@ -21,8 +21,6 @@ This project intentionally avoids Ethereum/Solidity to demonstrate mastery of th
 | Smart Contracts | Solidity code | Python Flask REST API |
 | Learning Outcome | How to use tools | How blockchain works internally |
 
-> **Note:** We initially explored an Ethereum/Solidity approach (see archived branches `feature/smart-contracts` and `feature/documentation`), but pivoted to a custom blockchain to demonstrate deeper understanding of blockchain fundamentals as required by the course.
-
 ---
 
 ## 🏗 Architecture
@@ -40,9 +38,122 @@ In-Memory Storage
 ## 🔧 Tech Stack
 
 **Backend:** Python 3.8+, Flask, flask-cors, hashlib (SHA-256)
+
 **Frontend:** HTML5, CSS3, Vanilla JS, Web Crypto API (SHA-256)
+
 **Testing:** pytest, pytest-cov
 
 ---
 
-*More sections coming soon: Installation, Usage, Testing, Project Structure*
+## 📦 Installation & Running
+
+### Backend
+
+```bash
+cd backend
+pip install -r requirements.txt
+python app.py
+```
+
+Server starts at `http://localhost:5000`
+
+### Frontend
+
+```bash
+cd frontend
+python3 -m http.server 3000
+```
+
+Open `http://localhost:3000` in your browser.
+
+---
+
+## 🎮 How to Use
+
+1. **Enter your username** in the header (e.g. "alice")
+2. **Register Model** → Upload AI model file → SHA-256 hash computed → stored on blockchain
+3. **Verify Model** → Upload same file later → compare hash → integrity confirmed or denied
+4. **Explore Blockchain** → View all blocks with hashes, nonces, and transactions
+5. **Validate Chain** → Prove the blockchain hasn't been tampered with
+
+---
+
+## 🧪 Testing
+
+```bash
+cd backend
+pytest tests/ -v                          # Run all tests
+pytest tests/ -v --cov=. --cov-report=term-missing   # With coverage
+pytest tests/ --cov=. --cov-report=html   # HTML coverage report
+```
+
+---
+
+## 📊 Project Structure
+
+```
+blockverify/
+├── backend/
+│   ├── app.py                  # Flask REST API
+│   ├── blockchain.py           # Custom blockchain (Block + Blockchain)
+│   ├── requirements.txt
+│   └── tests/
+│       ├── test_blockchain.py  # Blockchain core tests
+│       └── test_api.py         # API endpoint tests
+├── frontend/
+│   └── index.html              # Complete web UI
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── BLOCKCHAIN_CONCEPTS.md
+│   └── API_REFERENCE.md
+├── README.md
+├── .gitignore
+└── LICENSE
+```
+
+---
+
+## 🔐 Security Features
+
+- **SHA-256 Hashing** — Cryptographic fingerprint for every block
+- **Proof-of-Work** — Computational cost prevents tampering (difficulty 4)
+- **Chain Linking** — Each block references the previous block's hash
+- **Tamper Detection** — Validation walks the entire chain and detects modifications
+- **Immutable Audit Trail** — Every verification event is logged on-chain
+
+---
+
+## 📈 Blockchain Concepts Demonstrated
+
+1. **Block Structure** — index, timestamp, transactions, previous_hash, nonce, hash
+2. **Proof-of-Work Mining** — Find nonce that produces hash with N leading zeros
+3. **Chain Linking** — previous_hash creates a tamper-evident linked list
+4. **Validation** — Walk chain to verify hashes and links
+5. **Immutability** — Modifying any block breaks all subsequent blocks
+
+See [docs/BLOCKCHAIN_CONCEPTS.md](docs/BLOCKCHAIN_CONCEPTS.md) for detailed explanations.
+
+---
+
+## 👥 Team
+
+**Team Name:** razor_hats
+
+---
+
+## 📚 References
+
+- Nakamoto, S. (2008). *Bitcoin: A Peer-to-Peer Electronic Cash System*
+- Narayanan et al. (2016). *Bitcoin and Cryptocurrency Technologies*. Princeton University Press
+- NIST (2015). *Secure Hash Standard (SHS)*. FIPS PUB 180-4
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE).
+
+## 🙏 Acknowledgments
+
+- Professor @manoov — Course Instructor
+- BCSE324L Foundations of Blockchain Technology, VIT
