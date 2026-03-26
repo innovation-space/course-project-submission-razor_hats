@@ -26,6 +26,17 @@
       --mono:       'JetBrains Mono', monospace;
     }
 
+    body.light-theme {
+      --bg:         #f8fafc;
+      --surface:    #ffffff;
+      --surface2:   #f1f5f9;
+      --border:     #e2e8f0;
+      --text:       #0f172a;
+      --text-muted: #64748b;
+      --primary:    #4f46e5;
+      --primary-h:  #4338ca;
+    }
+
     body {
       font-family: var(--font);
       background: var(--bg);
@@ -132,12 +143,22 @@
       word-break: break-all; color: var(--warn); margin-top: .4rem;
     }
 
-    /* ═══════════ Status ═══════════ */
-    .status { padding: .7rem .9rem; border-radius: 8px; margin-top: .85rem; font-size: .88rem; display: none; }
-    .status.show { display: block; }
-    .status.ok   { background: rgba(0,206,201,.12); border: 1px solid var(--success); color: var(--success); }
-    .status.err  { background: rgba(255,107,107,.12); border: 1px solid var(--danger); color: var(--danger); }
-    .status.info { background: rgba(108,92,231,.12); border: 1px solid var(--primary); color: var(--primary-h); }
+    /* ═══════════ Toasts ═══════════ */
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 1rem 1.2rem; min-width: 280px; font-size: 0.9rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      transform: translateX(120%); opacity: 0;
+      animation: toastSlideIn 0.3s forwards ease-out;
+    }
+    .toast.hide { animation: toastSlideOut 0.3s forwards ease-in; }
+    @keyframes toastSlideIn { to { transform: translateX(0); opacity: 1; } }
+    @keyframes toastSlideOut { to { transform: translateX(120%); opacity: 0; } }
+    .toast.ok { border-left: 4px solid var(--success); }
+    .toast.err { border-left: 4px solid var(--danger); }
+    .toast.info { border-left: 4px solid var(--primary); }
+    .status { display: none !important; } /* Hide old inline statuses */
 
     /* ═══════════ Tables ═══════════ */
     .tbl { width: 100%; border-collapse: collapse; margin-top: .75rem; font-size: .82rem; }
@@ -151,24 +172,25 @@
     .badge-err { background: rgba(255,107,107,.18); color: var(--danger); }
 
     /* ═══════════ Blockchain Explorer ═══════════ */
+    .chain-container { display: flex; align-items: flex-start; gap: 1.5rem; overflow-x: auto; padding: 1rem 0 2rem; }
     .block-card {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 1rem; margin-bottom: .75rem; position: relative;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.2rem; min-width: 330px; max-width: 330px; flex-shrink: 0; position: relative;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 4px solid var(--primary);
     }
-    .block-card::before {
-      content: ''; position: absolute; top: -12px; left: 30px; width: 2px; height: 12px;
-      background: var(--primary); opacity: .5;
+    .chain-arrow {
+      color: var(--primary); font-size: 2rem; display: flex; align-items: center; justify-content: center;
+      margin-top: 3.5rem; flex-shrink: 0; opacity: 0.8;
     }
-    .block-card:first-child::before { display: none; }
-    .block-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
-    .block-hdr strong { font-size: .95rem; }
-    .block-hdr span { font-size: .75rem; color: var(--text-muted); }
-    .block-row { font-size: .8rem; margin-bottom: .25rem; }
-    .block-row strong { color: var(--text-muted); font-weight: 500; }
-    .block-row code { font-family: var(--mono); font-size: .72rem; color: var(--warn); }
-    details { margin-top: .4rem; font-size: .78rem; }
-    details summary { cursor: pointer; color: var(--primary-h); }
-    details pre { background: var(--bg); padding: .5rem; border-radius: 6px; margin-top: .3rem; overflow-x: auto; font-size: .72rem; color: var(--text-muted); }
+    .block-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: .8rem; }
+    .block-hdr strong { font-size: 1.1rem; color: var(--text); }
+    .block-hdr span { font-size: .75rem; color: var(--text-muted); background: var(--surface2); padding: 0.2rem 0.5rem; border-radius: 4px; }
+    .block-row { font-size: .8rem; margin-bottom: .4rem; word-break: break-all; }
+    .block-row strong { color: var(--text-muted); font-weight: 500; display: block; margin-bottom: 0.1rem; }
+    .block-row code { font-family: var(--mono); font-size: .72rem; color: var(--warn); background: rgba(0,0,0,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; display: block; }
+    details { margin-top: .8rem; font-size: .78rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; }
+    details summary { cursor: pointer; color: var(--primary-h); font-weight: 600; outline: none; }
+    details pre { background: var(--bg); padding: .5rem; border-radius: 6px; margin-top: .5rem; overflow-x: auto; font-size: .72rem; color: var(--text-muted); border: 1px solid var(--border); }
 
     /* ═══════════ Spinner ═══════════ */
     .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .5s linear infinite; }
@@ -193,6 +215,7 @@
   <div class="user-box">
     <label>Username:</label>
     <input type="text" id="username" placeholder="e.g. alice" />
+    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;margin-left:8px;outline:none;" title="Toggle Light/Dark Mode">☀️</button>
   </div>
 </header>
 
@@ -325,12 +348,28 @@
     </div>
   </div>
 
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
 </div>
 
 <!-- ═══════════ JavaScript ═══════════ -->
 <script>
 const API = 'http://localhost:5000/api';
 const hashes = {};  // section → computed hash hex string
+
+// ────────── Theme ──────────
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light-theme');
+  document.getElementById('themeToggle').textContent = isLight ? '🌙' : '☀️';
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+}
+
+if (localStorage.getItem('theme') === 'light') {
+  document.body.classList.add('light-theme');
+  window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('themeToggle').textContent = '🌙';
+  });
+}
 
 // ────────── Helpers ──────────
 
@@ -341,9 +380,15 @@ function getUser() {
 }
 
 function status(id, type, msg) {
-  const el = document.getElementById(id);
-  el.className = 'status show ' + type;
-  el.innerHTML = msg;
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = msg;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('hide');
+    setTimeout(() => toast.remove(), 300);
+  }, type === 'info' ? 1500 : 4000);
 }
 
 function switchTab(name, btn) {
@@ -582,19 +627,23 @@ async function loadChain() {
     const res = await fetch(API + '/chain');
     const d = await res.json();
     if (!d.success) return;
-    let h = `<p style="color:var(--text-muted);margin-bottom:.6rem;">Showing <strong>${d.length}</strong> blocks</p>`;
-    d.chain.forEach(b => {
+    let h = `<p style="color:var(--text-muted);margin-bottom:.6rem;">Showing <strong>${d.length}</strong> blocks</p><div class="chain-container">`;
+    d.chain.forEach((b, i) => {
       const date = new Date(b.timestamp * 1000).toLocaleString();
       h += `<div class="block-card">
         <div class="block-hdr"><strong>Block #${b.index}</strong><span>${date}</span></div>
         <div class="block-row"><strong>Hash: </strong><code>${b.hash}</code></div>
-        <div class="block-row"><strong>Prev: </strong><code>${b.previous_hash}</code></div>
-        <div class="block-row"><strong>Nonce: </strong>${b.nonce.toLocaleString()} &nbsp;|&nbsp; <strong>Txns: </strong>${b.transactions.length}</div>
+        <div class="block-row"><strong>Prev Hash: </strong><code>${b.previous_hash}</code></div>
+        <div class="block-row"><strong>Nonce: </strong><span style="color:var(--text)">${b.nonce.toLocaleString()}</span> &nbsp;|&nbsp; <strong>Txns: </strong><span style="color:var(--text)">${b.transactions.length}</span></div>
         <details><summary>View Transactions</summary><pre>${JSON.stringify(b.transactions,null,2)}</pre></details>
       </div>`;
+      if (i < d.chain.length - 1) {
+        h += `<div class="chain-arrow">➡</div>`;
+      }
     });
+    h += '</div>';
     document.getElementById('chainView').innerHTML = h;
-  } catch(e) { document.getElementById('chainView').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+  } catch(e) { status('toastContainer', 'err', '❌ ' + e.message); }
 }
 
 async function validateChain() {
