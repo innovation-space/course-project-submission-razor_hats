@@ -14,9 +14,11 @@ Author: razor_hats team
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from blockchain import Blockchain
+from blockchain import Blockchain, Block
 from time import time
 import hashlib
+import json
+import os
 
 # ------------------------------------------------------------------ #
 #  App & state initialisation                                         #
@@ -31,6 +33,51 @@ blockchain = Blockchain(difficulty=4)
 # In-memory registries (would be a DB in production)
 models_registry = {}        # modelId  → model dict
 verification_logs = {}      # modelId  → [verification records]
+
+# Persistence file path
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blockverify_data.json")
+
+
+# ------------------------------------------------------------------ #
+#  Persistence                                                         #
+# ------------------------------------------------------------------ #
+
+def save_state():
+    """Persist blockchain, registries, and logs to disk."""
+    if app.config.get("TESTING"):
+        return
+    data = {
+        "chain": blockchain.get_chain(),
+        "difficulty": blockchain.difficulty,
+        "models_registry": models_registry,
+        "verification_logs": verification_logs,
+    }
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def load_state():
+    """Load persisted state from disk if file exists."""
+    if not os.path.exists(DATA_FILE):
+        return
+    try:
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+        # Rebuild blockchain from serialized chain
+        blockchain.chain = []
+        for bd in data["chain"]:
+            b = Block(bd["index"], bd["timestamp"], bd["transactions"], bd["previous_hash"], bd["nonce"])
+            b.hash = bd["hash"]  # Override recalculated hash with stored hash
+            blockchain.chain.append(b)
+        models_registry.update(data.get("models_registry", {}))
+        verification_logs.update(data.get("verification_logs", {}))
+        print(f"  Loaded {len(blockchain.chain)} blocks from disk")
+    except Exception as e:
+        print(f"  Warning: Could not load saved state: {e}")
+
+
+# Load persisted data on startup
+load_state()
 
 
 # ------------------------------------------------------------------ #
@@ -98,12 +145,15 @@ def register_model():
             ],
         }
         verification_logs[model_id] = []
+        save_state()
 
         return jsonify(
             {
                 "success": True,
                 "modelId": model_id,
                 "blockIndex": new_block.index,
+                "miningTime": new_block.mining_time,
+                "miningAttempts": new_block.mining_attempts,
                 "message": "Model registered successfully",
             }
         ), 200
@@ -153,6 +203,7 @@ def verify_model():
                 "blockIndex": new_block.index,
             }
         )
+        save_state()
 
         return jsonify(
             {
@@ -162,6 +213,8 @@ def verify_model():
                 if is_valid
                 else "INTEGRITY MISMATCH — hash does not match",
                 "blockIndex": new_block.index,
+                "miningTime": new_block.mining_time,
+                "miningAttempts": new_block.mining_attempts,
                 "storedHash": model["modelHash"],
                 "providedHash": data["providedHash"],
             }
@@ -221,12 +274,15 @@ def add_version():
                 "blockIndex": new_block.index,
             }
         )
+        save_state()
 
         return jsonify(
             {
                 "success": True,
                 "version": new_ver,
                 "blockIndex": new_block.index,
+                "miningTime": new_block.mining_time,
+                "miningAttempts": new_block.mining_attempts,
                 "message": f"Version {new_ver} added successfully",
             }
         ), 200
@@ -250,9 +306,45 @@ def deactivate_model():
 
         tx = {"type": "deactivate", "modelId": data["modelId"], "owner": data["owner"], "timestamp": time()}
         blockchain.add_transaction(tx)
-        blockchain.mine_pending_transactions()
+        new_block = blockchain.mine_pending_transactions()
+        save_state()
 
-        return jsonify({"success": True, "message": "Model deactivated"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Model deactivated",
+            "miningTime": new_block.mining_time,
+            "miningAttempts": new_block.mining_attempts,
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/reactivate", methods=["POST"])
+def reactivate_model():
+    """Re-activate a previously deactivated model."""
+    try:
+        data = request.get_json()
+        model = models_registry.get(data.get("modelId"))
+        if not model:
+            return jsonify({"success": False, "error": "Model not found"}), 404
+        if model["owner"] != data.get("owner"):
+            return jsonify({"success": False, "error": "Only the owner can reactivate"}), 403
+        if model["isActive"]:
+            return jsonify({"success": False, "error": "Model is already active"}), 400
+
+        model["isActive"] = True
+
+        tx = {"type": "reactivate", "modelId": data["modelId"], "owner": data["owner"], "timestamp": time()}
+        blockchain.add_transaction(tx)
+        new_block = blockchain.mine_pending_transactions()
+        save_state()
+
+        return jsonify({
+            "success": True,
+            "message": "Model reactivated",
+            "miningTime": new_block.mining_time,
+            "miningAttempts": new_block.mining_attempts,
+        }), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -329,6 +421,16 @@ def get_stats():
             "totalBlocks": len(blockchain.chain),
         }
     ), 200
+
+
+@app.route("/api/search", methods=["GET"])
+def search_models():
+    """Search models by name keyword (case-insensitive)."""
+    q = request.args.get("q", "").strip().lower()
+    if not q:
+        return jsonify({"success": False, "error": "Query parameter 'q' is required"}), 400
+    matches = [m for m in models_registry.values() if q in m["modelName"].lower()]
+    return jsonify({"success": True, "results": matches, "count": len(matches)}), 200
 
 
 # ------------------------------------------------------------------ #

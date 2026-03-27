@@ -349,3 +349,135 @@ class TestEdgeCases:
         client.post("/api/add-version", json={"modelId": model_id, "newHash": "v2", "changelog": "v2", "owner": "alice"})
         resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "v3", "changelog": "v3", "owner": "alice"})
         assert resp.get_json()["version"] == 3
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Mining metrics
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestMiningMetrics:
+
+    def test_register_returns_mining_metrics(self, client):
+        data = _register(client).get_json()
+        assert "miningTime" in data
+        assert "miningAttempts" in data
+        assert isinstance(data["miningAttempts"], int)
+        assert data["miningAttempts"] >= 1
+
+    def test_verify_returns_mining_metrics(self, client):
+        model_id = _register(client).get_json()["modelId"]
+        resp = client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123", "verifier": "bob"})
+        data = resp.get_json()
+        assert "miningTime" in data
+        assert "miningAttempts" in data
+
+    def test_add_version_returns_mining_metrics(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "v2", "changelog": "c", "owner": "alice"})
+        data = resp.get_json()
+        assert "miningTime" in data
+        assert "miningAttempts" in data
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /api/search
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestSearch:
+
+    def test_search_by_name(self, client):
+        _register(client, name="ResNet50")
+        _register(client, name="BERT-Base")
+        resp = client.get("/api/search?q=resnet")
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["count"] == 1
+        assert data["results"][0]["modelName"] == "ResNet50"
+
+    def test_search_case_insensitive(self, client):
+        _register(client, name="MyModel")
+        resp = client.get("/api/search?q=MYMODEL")
+        assert resp.get_json()["count"] == 1
+
+    def test_search_no_results(self, client):
+        resp = client.get("/api/search?q=nonexistent")
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["count"] == 0
+
+    def test_search_missing_query(self, client):
+        resp = client.get("/api/search")
+        assert resp.status_code == 400
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /api/reactivate
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestReactivate:
+
+    def test_reactivate_success(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        client.post("/api/deactivate", json={"modelId": model_id, "owner": "alice"})
+        resp = client.post("/api/reactivate", json={"modelId": model_id, "owner": "alice"})
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is True
+
+    def test_reactivate_wrong_owner(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        client.post("/api/deactivate", json={"modelId": model_id, "owner": "alice"})
+        resp = client.post("/api/reactivate", json={"modelId": model_id, "owner": "mallory"})
+        assert resp.status_code == 403
+
+    def test_reactivate_already_active(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        resp = client.post("/api/reactivate", json={"modelId": model_id, "owner": "alice"})
+        assert resp.status_code == 400
+
+    def test_reactivate_not_found(self, client):
+        resp = client.post("/api/reactivate", json={"modelId": "ghost", "owner": "alice"})
+        assert resp.status_code == 404
+
+    def test_reactivated_model_can_verify(self, client):
+        model_id = _register(client, owner="alice", hash_val="h1").get_json()["modelId"]
+        client.post("/api/deactivate", json={"modelId": model_id, "owner": "alice"})
+        client.post("/api/reactivate", json={"modelId": model_id, "owner": "alice"})
+        resp = client.post("/api/verify", json={"modelId": model_id, "providedHash": "h1", "verifier": "bob"})
+        assert resp.status_code == 200
+        assert resp.get_json()["isValid"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Persistence
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestPersistence:
+
+    def test_save_and_load_round_trip(self, client, tmp_path):
+        """Register a model, save to disk, clear memory, load back, verify data survived."""
+        import app as app_module
+
+        original_file = app_module.DATA_FILE
+        app_module.DATA_FILE = str(tmp_path / "test_data.json")
+        app_module.app.config["TESTING"] = False  # enable persistence temporarily
+
+        try:
+            _register(client, name="PersistMe", owner="alice")
+            app_module.save_state()
+
+            # Clear in-memory state
+            models_registry.clear()
+            verification_logs.clear()
+            assert len(models_registry) == 0
+
+            # Load from disk
+            app_module.load_state()
+            assert len(models_registry) == 1
+            assert list(models_registry.values())[0]["modelName"] == "PersistMe"
+        finally:
+            app_module.DATA_FILE = original_file
+            app_module.app.config["TESTING"] = True

@@ -157,9 +157,16 @@ class Blockchain:
             previous_hash=self.get_latest_block().hash,
         )
 
-        new_block.mine_block(self.difficulty)
+        start_time = time()
+        attempts = new_block.mine_block(self.difficulty)
+        mining_time = time() - start_time
+
         self.chain.append(new_block)
         self.pending_transactions = []
+
+        # Attach mining metrics for the caller (not serialized by to_dict)
+        new_block.mining_attempts = attempts
+        new_block.mining_time = round(mining_time, 4)
 
         return new_block
 
