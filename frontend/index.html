@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BlockVerify — AI Model Integrity Verification</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -391,12 +391,83 @@
     }
     .block-card:hover .bc-open-hint { opacity: 1; }
 
+    /* ── Welcome Modal ── */
+    .welcome-overlay {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center; padding: 1rem;
+    }
+    .welcome-overlay.open { display: flex; animation: fadeIn .25s ease; }
+    .welcome-box {
+      background: linear-gradient(160deg, rgba(22,28,48,0.99) 0%, rgba(12,16,28,1) 100%);
+      border: 1px solid rgba(108,92,231,0.3); border-radius: 24px;
+      width: 100%; max-width: 560px; padding: 2.2rem 2rem 1.8rem;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 60px rgba(108,92,231,0.15);
+      animation: slideUpFade .3s ease;
+    }
+    .welcome-logo { font-size: 2.5rem; text-align: center; margin-bottom: .4rem; }
+    .welcome-title { font-size: 1.5rem; font-weight: 800; text-align: center; margin-bottom: .3rem; }
+    .welcome-sub { text-align: center; color: var(--text-muted); font-size: .9rem; margin-bottom: 1.8rem; }
+    .steps-grid { display: flex; flex-direction: column; gap: .8rem; margin-bottom: 1.8rem; }
+    .step-item {
+      display: flex; align-items: flex-start; gap: .9rem;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 12px; padding: .85rem 1rem;
+    }
+    .step-num {
+      width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--primary), #a29bfe);
+      display: flex; align-items: center; justify-content: center;
+      font-size: .78rem; font-weight: 800; color: #fff;
+    }
+    .step-content h4 { margin: 0 0 .2rem; font-size: .88rem; font-weight: 700; }
+    .step-content p  { margin: 0; font-size: .78rem; color: var(--text-muted); }
+    .welcome-user-row { display: flex; gap: .7rem; align-items: center; margin-bottom: 1.2rem; }
+    .welcome-user-row input {
+      flex: 1; padding: .7rem 1rem; border-radius: 10px; font-size: .9rem;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      color: var(--text); outline: none;
+    }
+    .welcome-user-row input:focus { border-color: var(--primary); }
+    .welcome-footer { text-align: center; font-size: .72rem; color: var(--text-muted); margin-top: .8rem; }
+
+    /* ── FAQ / Help Tab ── */
+    .faq-item { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: .7rem; }
+    .faq-q {
+      width: 100%; text-align: left; padding: .9rem 1.1rem; background: rgba(255,255,255,0.03);
+      border: none; color: var(--text); font-size: .88rem; font-weight: 600;
+      cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      transition: background .15s;
+    }
+    .faq-q:hover { background: rgba(255,255,255,0.06); }
+    .faq-q .faq-arrow { transition: transform .2s; color: var(--text-muted); }
+    .faq-q.open .faq-arrow { transform: rotate(180deg); }
+    .faq-a { display: none; padding: .85rem 1.1rem 1rem; font-size: .83rem; color: var(--text-muted); line-height: 1.65; border-top: 1px solid var(--border); }
+    .faq-a.open { display: block; animation: slideUpFade .15s ease; }
+    .faq-a code { background: rgba(255,255,255,0.07); padding: .1rem .35rem; border-radius: 4px; font-family: var(--mono); font-size: .8rem; }
+
+    /* ── Quickstart cards ── */
+    .qs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .qs-card {
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.1rem; cursor: pointer; transition: border-color .2s, transform .2s;
+    }
+    .qs-card:hover { border-color: var(--primary); transform: translateY(-3px); }
+    .qs-card .qs-icon { font-size: 1.8rem; margin-bottom: .5rem; }
+    .qs-card h4 { margin: 0 0 .25rem; font-size: .88rem; font-weight: 700; }
+    .qs-card p  { margin: 0; font-size: .75rem; color: var(--text-muted); }
+
+    /* ── Username hint ── */
+    .username-hint { font-size: .7rem; color: var(--warn); margin-top: .3rem; display: none; }
+
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .header { flex-direction: column; padding: 1rem; }
       .stats { grid-template-columns: 1fr; }
       .app { padding: 1rem; }
       .block-card { width: 260px; }
+      .welcome-box { padding: 1.5rem 1.2rem; }
+      .qs-grid { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -411,6 +482,7 @@
     <label>Username:</label>
     <input type="text" id="username" placeholder="e.g. alice" />
     <button onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;margin-left:8px;outline:none;transition:transform 0.2s;" id="themeToggle" title="Toggle theme" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">☀️</button>
+    <button onclick="showWelcome()" title="Quick start guide" style="background:rgba(108,92,231,0.15);border:1px solid rgba(108,92,231,0.3);color:var(--primary);border-radius:8px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem;font-weight:700;margin-left:6px;">❓ Help</button>
   </div>
 </header>
 
@@ -433,6 +505,7 @@
     <button class="tab"         onclick="switchTab('audit',this)">🔍 Audit Trail</button>
     <button class="tab"         onclick="switchTab('models',this)">📦 My Models</button>
     <button class="tab"         onclick="switchTab('explorer',this)">🔗 Explorer</button>
+    <button class="tab"         onclick="switchTab('help',this)">❓ Help</button>
   </div>
 
   <!-- Register -->
@@ -561,6 +634,123 @@
     </div>
   </div>
 
+  <!-- Help / FAQ -->
+  <div class="tab-content" id="tab-help">
+    <div class="card">
+      <h2>❓ Help &amp; Quick Start</h2>
+      <p class="subtitle">New here? Start with the quick-start cards, then browse the FAQ below.</p>
+
+      <!-- Quick Start -->
+      <div style="margin-bottom:1.4rem;">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.8rem;">🚀 Quick Start</div>
+        <div class="qs-grid">
+          <div class="qs-card" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">
+            <div class="qs-icon">📝</div>
+            <h4>1. Register a Model</h4>
+            <p>Upload any file → get its SHA-256 hash → save it on the blockchain forever.</p>
+          </div>
+          <div class="qs-card" onclick="switchTab('verify',document.querySelectorAll('.tab')[1])">
+            <div class="qs-icon">✅</div>
+            <h4>2. Verify Integrity</h4>
+            <p>Re-upload the same file later → compare hashes → instantly know if it was tampered.</p>
+          </div>
+          <div class="qs-card" onclick="switchTab('models',document.querySelectorAll('.tab')[4])">
+            <div class="qs-icon">📦</div>
+            <h4>3. Manage Models</h4>
+            <p>View all your registered models, add new versions, or deactivate old ones.</p>
+          </div>
+          <div class="qs-card" onclick="switchTab('explorer',document.querySelectorAll('.tab')[5])">
+            <div class="qs-icon">🔗</div>
+            <h4>4. Explore the Chain</h4>
+            <p>Browse every block. Click any block to inspect its full contents and transactions.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ -->
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.8rem;">💬 Frequently Asked Questions</div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is BlockVerify? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">BlockVerify is a custom blockchain system that lets you register AI models and verify their integrity over time. Every registration creates an immutable record on our blockchain — if someone tampers with the model file, the hash won't match and you'll know immediately.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Do I need to create an account? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">No account needed. Just type any username in the top-right field and start using the app. Your username is used as the owner tag for your models — pick something memorable so you can find your models later in the <strong>My Models</strong> tab.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What file types can I register? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Any file — <code>.pt</code>, <code>.h5</code>, <code>.pkl</code>, <code>.onnx</code>, <code>.bin</code>, PDFs, ZIPs, etc. The app only reads the file to compute its SHA-256 hash. The file itself is never uploaded to any server — all hashing happens in your browser.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is a Model ID and where do I find it? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">When you register a model, a unique 16-character Model ID is generated (e.g. <code>a3f9b2c1d4e8f7a0</code>). It is automatically copied to your clipboard. You can also find all your Model IDs in the <strong>My Models</strong> tab. Keep this ID — you need it for verification and version history.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">How do I verify a model? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Go to the <strong>Verify</strong> tab → upload the model file → paste the Model ID → click Verify. If the SHA-256 hash of your file matches what's stored on the blockchain, it's verified as intact. If it doesn't match, the model has been modified since registration.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is Proof-of-Work (PoW) mining? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Each write operation (register, verify, add version) creates a new blockchain block. Mining means finding a nonce value that makes the block's SHA-256 hash start with <code>0000</code>. This takes thousands of attempts and makes the chain computationally expensive to tamper with. You can see mining time and attempts in the ⛏ badge after each operation.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What does "Simulate Tamper Attack" do? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">It's a safe demo in the Explorer tab. The backend temporarily modifies a block's data, runs the chain validator (which detects the change), then immediately restores the original data. Nothing is permanently changed — it just proves your blockchain can detect tampering.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is the rate limit? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Each username can perform at most <strong>10 write operations</strong> (register, verify, add version) per 60 seconds. This prevents the blockchain from being flooded. If you hit the limit, wait a moment and try again — the Register tab shows your remaining quota after each operation.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Why does the app say "Network error"? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">The backend server may not be running. Make sure you started it with <code>python backend/app.py</code> from the project root. If using the hosted version, the Render free tier may be sleeping — wait 30 seconds and try again after the first request wakes it up.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Is my data safe? What happens when the server restarts? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">All data is persisted to JSON files in <code>backend/data/</code> on every write. If the server restarts, data is reloaded automatically. On Render's free tier, the disk is ephemeral — data resets on each deploy. For production use, attach a persistent disk.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Welcome / Onboarding Modal -->
+<div class="welcome-overlay" id="welcomeModal">
+  <div class="welcome-box">
+    <div class="welcome-logo">🔗</div>
+    <div class="welcome-title">Welcome to BlockVerify</div>
+    <div class="welcome-sub">A custom blockchain for AI model integrity verification. Here's how it works in 3 steps:</div>
+    <div class="steps-grid">
+      <div class="step-item">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Register your AI model</h4>
+          <p>Upload any model file — we compute its SHA-256 fingerprint and record it permanently on the blockchain.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Get your Model ID</h4>
+          <p>A unique 16-char ID is generated and auto-copied to your clipboard. Save it — you'll need it to verify later.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Verify integrity anytime</h4>
+          <p>Re-upload the model + paste the ID → instant tamper detection. Hash mismatch = model was modified.</p>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.6rem;font-weight:600;">Enter a username to get started:</div>
+    <div class="welcome-user-row">
+      <input type="text" id="welcomeUsername" placeholder="e.g. alice, mihir, john…" maxlength="32" onkeydown="if(event.key==='Enter')startFromWelcome()" />
+      <button class="btn" onclick="startFromWelcome()" style="white-space:nowrap;">Get Started →</button>
+    </div>
+    <div class="welcome-footer">Your username is stored locally — no sign-up required. &nbsp;·&nbsp; <a href="#" onclick="event.preventDefault();closeWelcome()" style="color:var(--primary);">Skip for now</a></div>
+  </div>
 </div>
 
 <!-- Block Details Modal -->
@@ -696,15 +886,20 @@ async function onFile(s) {
 });
 
 // ── Stats ──
+let _statsRefreshing = false;
 async function refreshStats() {
+  if (_statsRefreshing) return;
+  _statsRefreshing = true;
   try {
     const r = await fetch(API + '/stats');
     const d = await r.json();
-    document.getElementById('sModels').textContent = d.totalModels;
-    document.getElementById('sVerify').textContent = d.totalVerifications;
-    document.getElementById('sBlocks').textContent = d.totalBlocks;
+    document.getElementById('sModels').textContent = d.totalModels  ?? '—';
+    document.getElementById('sVerify').textContent = d.totalVerifications ?? '—';
+    document.getElementById('sBlocks').textContent = d.totalBlocks  ?? '—';
   } catch(e) {
     ['sModels','sVerify','sBlocks'].forEach(id => document.getElementById(id).textContent = '—');
+  } finally {
+    _statsRefreshing = false;
   }
 }
 
@@ -1167,37 +1362,62 @@ function openBlockModal(blockIndex) {
   const isGenesis = b.index === 0;
   const ts = new Date(b.timestamp * 1000).toLocaleString();
 
-  const txTypeIcon = { register: '📝', verify: '✅', genesis: '🌱', add_version: '🔄' };
+  const txTypeIcon   = { register: '📝', verify: '✅', genesis: '🌱', add_version: '🔄' };
+  const txTypeLabels = { register: 'Register', verify: 'Verify', genesis: 'Genesis', add_version: 'Add Version' };
+
+  // Pretty-print a single tx field value
+  function fmtVal(k, v) {
+    if (typeof v === 'boolean') return v ? '✅ Yes' : '❌ No';
+    if (typeof v === 'object' && v !== null) return JSON.stringify(v);
+    const s = String(v);
+    if ((k === 'timestamp') && !isNaN(v))
+      return new Date(v * 1000).toLocaleString();
+    if (s.length > 64) return `<span title="${s}" style="cursor:help">${s.substring(0,64)}…</span>`;
+    return s;
+  }
 
   const txHtml = b.transactions.map(tx => {
-    const type = tx.type || 'unknown';
-    const icon = txTypeIcon[type] || '📄';
-    const fields = Object.entries(tx)
+    const type  = tx.type || 'unknown';
+    const icon  = txTypeIcon[type]   || '📄';
+    const label = txTypeLabels[type] || type;
+    // Render pairs directly into one grid — NO nested divs
+    const pairs = Object.entries(tx)
       .filter(([k]) => k !== 'type')
-      .map(([k, v]) => {
-        const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
-        const display = val.length > 80 ? `<span title="${val}">${val.substring(0,80)}…</span>` : val;
-        return `<div class="modal-kv"><span class="modal-kv-label">${k}</span><span class="modal-kv-val">${display}</span></div>`;
-      }).join('');
-    return `<div class="modal-tx-item">
-      <div class="modal-tx-type ${type}">${icon} ${type.replace('_',' ')}</div>
-      <div class="modal-kv" style="grid-template-columns:130px 1fr;">${fields}</div>
-    </div>`;
+      .map(([k, v]) =>
+        `<span class="modal-kv-label">${k}</span><span class="modal-kv-val">${fmtVal(k, v)}</span>`
+      ).join('');
+    return `
+      <div class="modal-tx-item">
+        <div class="modal-tx-type ${type}">${icon} ${label}</div>
+        <div class="modal-kv" style="grid-template-columns:140px 1fr;margin-top:.5rem;">${pairs}</div>
+      </div>`;
   }).join('');
 
+  const badgeColor = isGenesis ? '#f6d860' : 'var(--primary)';
   document.getElementById('modalTitle').innerHTML =
-    `🧱 Block #${b.index} <span style="font-size:.8rem;font-weight:400;color:var(--text-muted);margin-left:.4rem;">${isGenesis ? 'Genesis' : 'Block'}</span>`;
+    `🧱 Block #${b.index}
+     <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:20px;
+       background:rgba(108,92,231,.15);color:${badgeColor};border:1px solid rgba(108,92,231,.3);
+       margin-left:.5rem;vertical-align:middle;">${isGenesis ? 'GENESIS' : 'BLOCK'}</span>`;
 
   document.getElementById('modalBody').innerHTML = `
     <div class="modal-section">
       <div class="modal-section-title">Block Info</div>
       <div class="modal-kv">
-        <span class="modal-kv-label">Index</span><span class="modal-kv-val">#${b.index}</span>
-        <span class="modal-kv-label">Timestamp</span><span class="modal-kv-val">${ts}</span>
-        <span class="modal-kv-label">Nonce</span><span class="modal-kv-val">${b.nonce.toLocaleString()}</span>
-        <span class="modal-kv-label">Transactions</span><span class="modal-kv-val">${b.transactions.length}</span>
-        ${b.mining_time != null ? `<span class="modal-kv-label">Mining Time</span><span class="modal-kv-val">${b.mining_time}s</span>` : ''}
-        ${b.attempts != null ? `<span class="modal-kv-label">Hash Attempts</span><span class="modal-kv-val">${b.attempts.toLocaleString()}</span>` : ''}
+        <span class="modal-kv-label">Index</span>
+        <span class="modal-kv-val" style="color:var(--primary);font-weight:700;">#${b.index}</span>
+        <span class="modal-kv-label">Timestamp</span>
+        <span class="modal-kv-val">${ts}</span>
+        <span class="modal-kv-label">Nonce</span>
+        <span class="modal-kv-val">${b.nonce.toLocaleString()}</span>
+        <span class="modal-kv-label">Transactions</span>
+        <span class="modal-kv-val">${b.transactions.length}</span>
+        ${b.mining_time != null ? `
+        <span class="modal-kv-label">Mining Time</span>
+        <span class="modal-kv-val"><span class="mining-badge" style="margin:0;font-size:.75rem;">⛏ ${b.mining_time}s</span></span>` : ''}
+        ${b.attempts != null ? `
+        <span class="modal-kv-label">Hash Attempts</span>
+        <span class="modal-kv-val">${b.attempts.toLocaleString()}</span>` : ''}
       </div>
     </div>
     <div class="modal-section">
@@ -1210,13 +1430,13 @@ function openBlockModal(blockIndex) {
     <div class="modal-section">
       <div class="modal-section-title">Previous Hash</div>
       <div class="modal-hash-row">
-        <code style="color:var(--text-muted)">${isGenesis ? '0 (genesis — no previous block)' : b.previous_hash}</code>
+        <code style="color:var(--text-muted)">${isGenesis ? '0000…0000 (genesis origin)' : b.previous_hash}</code>
         ${!isGenesis ? `<button class="copy-btn" onclick="copyText('${b.previous_hash}',this)">Copy</button>` : ''}
       </div>
     </div>
     <div class="modal-section">
       <div class="modal-section-title">Transactions (${b.transactions.length})</div>
-      <div class="modal-tx-list">${txHtml}</div>
+      <div class="modal-tx-list">${txHtml || '<p style="color:var(--text-muted);font-size:.85rem;">No transactions</p>'}</div>
     </div>`;
 
   document.getElementById('blockModal').classList.add('open');
@@ -1251,8 +1471,59 @@ function toggleTheme() {
   }
 }
 
+// ── Welcome Modal ──
+function showWelcome() {
+  document.getElementById('welcomeModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('welcomeUsername').focus(), 200);
+}
+function closeWelcome() {
+  document.getElementById('welcomeModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function startFromWelcome() {
+  const val = document.getElementById('welcomeUsername').value.trim();
+  if (val) {
+    document.getElementById('username').value = val;
+    localStorage.setItem('blockverify_username', val);
+  }
+  localStorage.setItem('blockverify_visited', '1');
+  closeWelcome();
+  toast('ok', `Welcome${val ? ', ' + val : ''}! Start by registering a model. 👆`);
+}
+
+// ── FAQ Toggle ──
+function toggleFaq(btn) {
+  const answer = btn.nextElementSibling;
+  const isOpen = btn.classList.contains('open');
+  // Close all
+  document.querySelectorAll('.faq-q.open').forEach(q => {
+    q.classList.remove('open');
+    q.nextElementSibling.classList.remove('open');
+  });
+  if (!isOpen) {
+    btn.classList.add('open');
+    answer.classList.add('open');
+  }
+}
+
+// ── Persist username ──
+function initUser() {
+  const saved = localStorage.getItem('blockverify_username');
+  if (saved) document.getElementById('username').value = saved;
+}
+document.getElementById('username').addEventListener('input', function() {
+  if (this.value.trim()) localStorage.setItem('blockverify_username', this.value.trim());
+});
+
+// ── Init ──
 refreshStats();
 initTheme();
+initUser();
+// Show welcome modal only on first ever visit
+if (!localStorage.getItem('blockverify_visited')) {
+  setTimeout(showWelcome, 600);
+}
 setInterval(refreshStats, 5000);
 </script>
 </body>
