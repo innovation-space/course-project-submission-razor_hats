@@ -550,7 +550,7 @@
         <button class="btn" id="validateBtn" onclick="validateChain()">Validate Chain Integrity</button>
         <button class="btn" id="tamperBtn" onclick="runTamperDemo()" style="background:linear-gradient(135deg,#e84393,#c0392b);">⚠️ Simulate Tamper Attack</button>
       </div>
-      <div id="tamperResult"></div>
+      <div id="tamperResult" style="display:none;"></div>
       <div id="chainValid"></div>
       <div id="chainView"></div>
       <div id="chainPager" style="display:none;margin-top:1.2rem;align-items:center;justify-content:center;gap:.8rem;">
@@ -1076,7 +1076,8 @@ function changePage(dir) {
 
 async function loadChain() {
   _currentPage = 0;
-  document.getElementById('tamperResult').innerHTML = '';
+  const tr = document.getElementById('tamperResult');
+  tr.innerHTML = ''; tr.style.display = 'none';
   document.getElementById('chainValid').innerHTML = '';
   document.getElementById('chainView').innerHTML = `
     <div style="display:flex;gap:60px;padding:1rem;overflow-x:auto;">
@@ -1118,10 +1119,13 @@ async function validateChain() {
 }
 
 // ── Tamper Demo ──
+let _tamperRunning = false;
 async function runTamperDemo() {
+  if (_tamperRunning) return;
+  _tamperRunning = true;
   setLoading('tamperBtn', true, 'Simulating attack...');
   const el = document.getElementById('tamperResult');
-  el.innerHTML = '';
+  el.innerHTML = ''; el.style.display = 'none';
   try {
     const res = await fetch(API + '/tamper-demo', { method: 'POST', headers: {'Content-Type':'application/json'} });
     const d = await res.json();
@@ -1150,9 +1154,10 @@ async function runTamperDemo() {
       <div style="font-size:.78rem;color:var(--text-muted);text-align:center;margin-bottom:.5rem;">
         ⚠️ This is a non-destructive simulation — no real data was harmed.
       </div>`;
+    el.style.display = 'block';
     toast('ok', 'Tamper demo complete — blockchain caught the attack!');
   } catch(e) { toast('err', 'Network error: ' + e.message); }
-  finally { setLoading('tamperBtn', false, '⚠️ Simulate Tamper Attack'); }
+  finally { setLoading('tamperBtn', false, '⚠️ Simulate Tamper Attack'); _tamperRunning = false; }
 }
 
 // ── Block Details Modal ──
