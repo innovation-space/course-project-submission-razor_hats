@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: blockverify-backend
+    runtime: python
+    rootDir: .
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: python backend/app.py
+    envVars:
+      - key: PORT
+        value: 5000

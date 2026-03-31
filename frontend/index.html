@@ -4,267 +4,637 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BlockVerify — AI Model Integrity Verification</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    /* ═══════════ Reset & Variables ═══════════ */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:         #080b12;
-      --surface:    #0f1420;
-      --surface2:   #171d2e;
-      --border:     #252d42;
-      --text:       #e8eaf0;
-      --text-muted: #7a829e;
-      --primary:    #6c5ce7;
-      --primary-h:  #a29bfe;
-      --success:    #00cec9;
-      --danger:     #ff6b6b;
-      --warn:       #feca57;
-      --radius:     10px;
-      --font:       'Outfit', sans-serif;
-      --mono:       'JetBrains Mono', monospace;
+      --bg: #080b12; --surface: rgba(15, 20, 32, 0.45); --surface2: rgba(23, 29, 46, 0.55);
+      --border: rgba(255, 255, 255, 0.08); --text: #e8eaf0; --text-muted: #8e9bb0;
+      --primary: #6c5ce7; --primary-h: #8b7cff; --success: #00cec9; --danger: #ff6b6b;
+      --warn: #feca57; --radius: 16px; --font: 'Outfit', sans-serif; --mono: 'JetBrains Mono', monospace;
+    }
+    body.light-theme {
+      --bg: #f8fafc; --surface: rgba(255,255,255,0.65); --surface2: rgba(255,255,255,0.85);
+      --border: rgba(0,0,0,0.08); --text: #1e293b; --text-muted: #64748b;
+      --primary: #4f46e5; --primary-h: #6366f1;
     }
 
     body {
-      font-family: var(--font);
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.6;
-      min-height: 100vh;
-      background-image:
-        radial-gradient(ellipse at 20% 0%, rgba(108,92,231,.08) 0%, transparent 60%),
-        radial-gradient(ellipse at 80% 100%, rgba(0,206,201,.06) 0%, transparent 50%);
+      font-family: var(--font); background: var(--bg); color: var(--text);
+      line-height: 1.6; min-height: 100vh; overflow-x: hidden; position: relative;
     }
+    body::before, body::after {
+      content: ''; position: fixed; border-radius: 50%; filter: blur(120px); z-index: -1;
+      animation: float 20s infinite alternate ease-in-out;
+    }
+    body::before { top: -10%; left: -10%; width: 50vw; height: 50vw; background: rgba(108,92,231,0.15); }
+    body::after  { bottom: -10%; right: -10%; width: 40vw; height: 40vw; background: rgba(0,206,201,0.12); animation-delay: -10s; }
+    @keyframes float { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(10%,15%) scale(1.1); } }
 
-    /* ═══════════ Header ═══════════ */
+    /* ── Header ── */
     .header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: .9rem 2rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: .75rem;
+      background: var(--surface); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border); padding: 1rem 2rem;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+      position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 30px rgba(0,0,0,0.1);
     }
-    .logo { display: flex; align-items: center; gap: .6rem; font-size: 1.35rem; font-weight: 700; letter-spacing: -.02em; }
+    .logo { display: flex; align-items: center; gap: .8rem; font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
     .logo-icon {
-      width: 34px; height: 34px;
+      width: 38px; height: 38px; background: linear-gradient(135deg, var(--primary), var(--success));
+      border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+      box-shadow: 0 0 15px rgba(108,92,231,0.4);
+    }
+    /* ── Auth user pill in header ── */
+    .user-box { display: flex; align-items: center; gap: .6rem; }
+    .user-pill {
+      display: flex; align-items: center; gap: .55rem;
+      background: rgba(108,92,231,0.15); border: 1px solid rgba(108,92,231,0.35);
+      border-radius: 20px; padding: .3rem .7rem .3rem .45rem;
+      font-size: .88rem; font-weight: 600; color: var(--text);
+    }
+    .user-pill .avatar {
+      width: 26px; height: 26px; border-radius: 50%;
       background: linear-gradient(135deg, var(--primary), var(--success));
-      border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem;
+      font-size: .75rem; font-weight: 800; color: #fff; flex-shrink: 0;
     }
-    .user-box { display: flex; align-items: center; gap: .5rem; }
-    .user-box label { font-size: .82rem; color: var(--text-muted); }
-    .user-box input {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
-      padding: .4rem .7rem; color: var(--text); font-family: var(--font); font-size: .88rem; width: 150px;
+    .btn-logout {
+      background: transparent; border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; padding: .3rem .65rem; color: var(--text-muted);
+      cursor: pointer; font-size: .8rem; transition: all .2s;
     }
-    .user-box input:focus { outline: none; border-color: var(--primary); }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); background: rgba(255,107,107,0.08); }
+    .btn-login-header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-h));
+      border: none; border-radius: 8px; padding: .4rem 1rem;
+      color: #fff; font-size: .88rem; font-weight: 700; cursor: pointer;
+      transition: all .2s; box-shadow: 0 2px 10px rgba(108,92,231,0.3);
+    }
+    .btn-login-header:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(108,92,231,0.5); }
 
-    /* ═══════════ Layout ═══════════ */
-    .app { max-width: 1060px; margin: 0 auto; padding: 1.5rem; }
+    /* ── Auth Modal ── */
+    .auth-overlay {
+      display: none; position: fixed; inset: 0; z-index: 3000;
+      background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center; padding: 1rem;
+    }
+    .auth-overlay.open { display: flex; animation: fadeIn .2s ease; }
+    .auth-box {
+      background: linear-gradient(160deg, rgba(18,24,42,0.99) 0%, rgba(10,14,24,1) 100%);
+      border: 1px solid rgba(108,92,231,0.3); border-radius: 24px;
+      width: 100%; max-width: 440px; padding: 2rem 2rem 1.8rem;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 60px rgba(108,92,231,0.15);
+      animation: slideUpFade .25s ease;
+    }
+    .auth-logo { font-size: 2rem; text-align: center; margin-bottom: .3rem; }
+    .auth-title { font-size: 1.4rem; font-weight: 800; text-align: center; margin-bottom: .25rem; }
+    .auth-sub { text-align: center; color: var(--text-muted); font-size: .83rem; margin-bottom: 1.4rem; }
+    .auth-tabs { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.4rem; }
+    .auth-tab {
+      flex: 1; padding: .55rem; text-align: center; cursor: pointer;
+      font-size: .88rem; font-weight: 700; border: none; background: transparent;
+      color: var(--text-muted); transition: all .2s;
+    }
+    .auth-tab.active { background: var(--primary); color: #fff; }
+    .auth-form { display: none; flex-direction: column; gap: .85rem; }
+    .auth-form.active { display: flex; }
+    .auth-field { display: flex; flex-direction: column; gap: .3rem; }
+    .auth-field label { font-size: .8rem; font-weight: 600; color: var(--text-muted); }
+    .auth-field input {
+      padding: .75rem 1rem; border-radius: 10px; font-size: .95rem;
+      background: rgba(255,255,255,0.06); border: 1.5px solid var(--border);
+      color: var(--text); outline: none; transition: border-color .2s;
+      font-family: var(--font);
+    }
+    .auth-field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(108,92,231,0.2); }
+    .auth-submit {
+      margin-top: .2rem; padding: .8rem; border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--primary), var(--primary-h));
+      color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: all .2s; box-shadow: 0 4px 15px rgba(108,92,231,0.35);
+    }
+    .auth-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(108,92,231,0.55); }
+    .auth-submit:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+    .auth-err { background: rgba(255,107,107,0.12); border: 1px solid rgba(255,107,107,0.3); border-radius: 8px; padding: .6rem .85rem; font-size: .82rem; color: var(--danger); display: none; }
+    .auth-err.show { display: block; }
+    .auth-divider { text-align: center; font-size: .75rem; color: var(--text-muted); }
 
-    /* ═══════════ Stats ═══════════ */
-    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin-bottom: 1.5rem; }
-    .stat-card {
+    .app { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+    /* ── Cards ── */
+    .card, .stat-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 1rem; text-align: center;
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15); transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
-    .stat-val { font-size: 1.8rem; font-weight: 700; color: var(--primary); }
-    .stat-lbl { font-size: .78rem; color: var(--text-muted); margin-top: .15rem; }
+    .card { padding: 1.8rem; margin-bottom: 1.5rem; }
+    .stat-card { padding: 1.5rem; text-align: center; }
+    .stat-card:hover { transform: translateY(-6px); box-shadow: 0 12px 40px rgba(0,0,0,0.25); border-color: rgba(255,255,255,0.15); }
 
-    /* ═══════════ Tabs ═══════════ */
-    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; }
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-bottom: 2rem; }
+    .stat-val {
+      font-size: 2.2rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--primary-h));
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .stat-lbl { font-size: .85rem; color: var(--text-muted); margin-top: .25rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: .5rem; border-bottom: 1px solid var(--border); margin-bottom: 2rem; overflow-x: auto; padding-bottom: 0.5rem; }
     .tab {
-      background: none; border: none; color: var(--text-muted); padding: .65rem 1rem;
-      cursor: pointer; font-family: var(--font); font-size: .88rem; font-weight: 500;
-      border-bottom: 2px solid transparent; white-space: nowrap; transition: .2s;
+      background: transparent; border: none; color: var(--text-muted); padding: .65rem 1.2rem;
+      cursor: pointer; font-family: var(--font); font-size: .95rem; font-weight: 600;
+      position: relative; transition: color 0.3s; white-space: nowrap;
+    }
+    .tab::after {
+      content: ''; position: absolute; bottom: -0.6rem; left: 0; width: 100%; height: 3px;
+      background: var(--primary); border-radius: 3px 3px 0 0;
+      transform: scaleX(0); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
     }
     .tab:hover { color: var(--text); }
-    .tab.active { color: var(--primary-h); border-bottom-color: var(--primary); }
+    .tab.active { color: var(--primary-h); }
+    .tab.active::after { transform: scaleX(1); }
     .tab-content { display: none; }
-    .tab-content.active { display: block; animation: fadeIn .25s ease; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .tab-content.active { display: block; animation: slideUpFade .4s cubic-bezier(0.16,1,0.3,1); }
+    @keyframes slideUpFade { from { opacity:0; transform:translateY(15px); } to { opacity:1; transform:translateY(0); } }
 
-    /* ═══════════ Card ═══════════ */
-    .card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 1.4rem; margin-bottom: 1.25rem;
-    }
-    .card h2 { font-size: 1.1rem; margin-bottom: .85rem; display: flex; align-items: center; gap: .4rem; }
-
-    /* ═══════════ Forms ═══════════ */
-    .fg { margin-bottom: .85rem; }
-    .fg label { display: block; margin-bottom: .3rem; font-size: .8rem; color: var(--text-muted); font-weight: 500; }
+    /* ── Typography & Forms ── */
+    .card h2 { font-size: 1.3rem; margin-bottom: .4rem; display: flex; align-items: center; gap: .5rem; font-weight: 700; }
+    .card .subtitle { color: var(--text-muted); font-size: .85rem; margin-bottom: 1.2rem; }
+    .fg { margin-bottom: 1.2rem; }
+    .fg label { display: block; margin-bottom: .4rem; font-size: .85rem; color: var(--text-muted); font-weight: 600; }
     input[type="text"], textarea {
-      width: 100%; padding: .6rem .8rem; background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 8px; color: var(--text); font-family: var(--font); font-size: .88rem;
+      width: 100%; padding: .75rem 1rem; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-family: var(--font); font-size: .95rem;
+      box-shadow: inset 0 2px 5px rgba(0,0,0,0.05); transition: 0.2s;
     }
-    input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--primary); }
-    textarea { resize: vertical; min-height: 60px; }
+    input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(108,92,231,0.2); }
+    textarea { resize: vertical; min-height: 80px; }
 
+    /* ── Buttons ── */
     .btn {
-      background: var(--primary); color: #fff; border: none; padding: .6rem 1.3rem; border-radius: 8px;
-      cursor: pointer; font-family: var(--font); font-size: .9rem; font-weight: 600; transition: .2s;
-      display: inline-flex; align-items: center; gap: .4rem;
+      background: linear-gradient(135deg, var(--primary), var(--primary-h)); color: #fff; border: none;
+      padding: .75rem 1.6rem; border-radius: 10px; cursor: pointer; font-family: var(--font);
+      font-size: .95rem; font-weight: 600; transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+      display: inline-flex; align-items: center; gap: .5rem;
+      box-shadow: 0 4px 15px rgba(108,92,231,0.4); position: relative; overflow: hidden;
     }
-    .btn:hover { background: var(--primary-h); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-    .btn-sec { background: var(--surface2); border: 1px solid var(--border); }
-    .btn-sec:hover { background: var(--border); }
+    .btn::after {
+      content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent);
+      transform: skewX(-20deg); transition: 0.5s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(108,92,231,0.6); }
+    .btn:hover::after { left: 150%; }
+    .btn:active { transform: translateY(1px) scale(0.97); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
+    .btn-sec { background: var(--surface2); border: 1px solid var(--border); box-shadow: none; color: var(--text); }
+    .btn-sec::after { display: none; }
+    .btn-sec:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.2); }
+    .btn-danger { background: linear-gradient(135deg, #c0392b, var(--danger)); box-shadow: 0 4px 15px rgba(255,107,107,0.3); }
+    .btn-danger:hover { box-shadow: 0 6px 20px rgba(255,107,107,0.5); }
 
-    /* ═══════════ File Drop ═══════════ */
+    /* ── File Drop ── */
     .file-drop {
-      border: 2px dashed var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center;
-      cursor: pointer; transition: .2s;
+      border: 2px dashed var(--border); border-radius: var(--radius); padding: 2.5rem 1.5rem;
+      text-align: center; cursor: pointer; transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+      background: var(--surface2); position: relative; overflow: hidden;
     }
-    .file-drop:hover, .file-drop.dragover { border-color: var(--primary); background: rgba(108,92,231,.06); }
-    .file-drop p { color: var(--text-muted); font-size: .88rem; }
-    .file-name { color: var(--success); font-weight: 600; margin-top: .4rem; font-size: .85rem; }
+    .file-drop::before {
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle at center, rgba(108,92,231,0.1) 0%, transparent 70%);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .file-drop:hover, .file-drop.dragover { border-color: var(--primary); transform: scale(1.01); box-shadow: 0 10px 30px rgba(108,92,231,0.15); }
+    .file-drop:hover::before, .file-drop.dragover::before { opacity: 1; }
+    .file-drop p { color: var(--text-muted); font-size: 1rem; position: relative; z-index: 1; font-weight: 500; }
+    .file-drop span.icon { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; transition: transform 0.3s; }
+    .file-drop:hover span.icon { transform: translateY(-4px); }
+    .file-name { color: var(--success); font-weight: 600; margin-top: .8rem; font-size: .95rem; position: relative; z-index: 1; }
 
-    /* ═══════════ Hash Display ═══════════ */
+    /* ── Hash box ── */
     .hash-box {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-      padding: .55rem .75rem; font-family: var(--mono); font-size: .75rem;
-      word-break: break-all; color: var(--warn); margin-top: .4rem;
+      background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px;
+      padding: .6rem .8rem; font-family: var(--mono); font-size: .8rem; word-break: break-all;
+      color: var(--warn); margin-top: .5rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    }
+    .hash-box span { flex: 1; word-break: break-all; }
+    .copy-btn {
+      background: none; border: 1px solid var(--border); border-radius: 6px; padding: .2rem .5rem;
+      color: var(--text-muted); cursor: pointer; font-size: .75rem; flex-shrink: 0;
+      transition: all 0.2s; font-family: var(--font);
+    }
+    .copy-btn:hover { border-color: var(--primary); color: var(--primary-h); background: rgba(108,92,231,0.1); }
+    .copy-btn.copied { border-color: var(--success); color: var(--success); }
+
+    /* ── Tables ── */
+    .tbl { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 1rem; font-size: .85rem; }
+    .tbl th { text-align: left; padding: .8rem 1rem; border-bottom: 2px solid var(--border); color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+    .tbl td { padding: .8rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface2); transition: background 0.2s; }
+    .tbl tr:first-child td:first-child { border-top-left-radius: 8px; }
+    .tbl tr:first-child td:last-child { border-top-right-radius: 8px; }
+    .tbl tr:last-child td:first-child { border-bottom-left-radius: 8px; border-bottom: none; }
+    .tbl tr:last-child td:last-child { border-bottom-right-radius: 8px; border-bottom: none; }
+    .tbl tr:hover td { background: rgba(255,255,255,0.04); }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: .2rem .6rem; border-radius: 20px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge-ok  { background: rgba(0,206,201,.15);  color: var(--success); border: 1px solid rgba(0,206,201,.3); }
+    .badge-err { background: rgba(255,107,107,.15); color: var(--danger);  border: 1px solid rgba(255,107,107,.3); }
+    .badge-warn{ background: rgba(254,202,87,.15);  color: var(--warn);    border: 1px solid rgba(254,202,87,.3); }
+
+    /* ── Toasts ── */
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1rem 1.4rem; min-width: 300px; max-width: 420px; font-size: .95rem; font-weight: 500;
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 15px 35px rgba(0,0,0,0.3); transform: translateX(120%); opacity: 0;
+      animation: toastIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards;
+      display: flex; align-items: flex-start; gap: 0.8rem;
+    }
+    .toast.hide { animation: toastOut 0.3s forwards ease-in; }
+    @keyframes toastIn  { to { transform: translateX(0); opacity: 1; } }
+    @keyframes toastOut { to { transform: translateX(120%); opacity: 0; } }
+    .toast.ok   { border-left: 4px solid var(--success); } .toast.ok::before   { content: '✅'; }
+    .toast.err  { border-left: 4px solid var(--danger);  } .toast.err::before  { content: '❌'; }
+    .toast.info { border-left: 4px solid var(--primary); } .toast.info::before { content: 'ℹ️'; }
+    .status { display: none !important; }
+
+    /* ── Verify result panel ── */
+    .verify-result { margin-top: 1.2rem; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); animation: slideUpFade .3s ease; }
+    .verify-result-header { padding: 1.2rem 1.5rem; display: flex; align-items: center; gap: .8rem; font-size: 1.1rem; font-weight: 700; }
+    .verify-result.valid .verify-result-header { background: rgba(0,206,201,0.12); color: var(--success); border-bottom: 1px solid rgba(0,206,201,0.2); }
+    .verify-result.invalid .verify-result-header { background: rgba(255,107,107,0.12); color: var(--danger); border-bottom: 1px solid rgba(255,107,107,0.2); }
+    .verify-result-body { padding: 1.2rem 1.5rem; background: var(--surface2); display: flex; flex-direction: column; gap: .8rem; }
+    .hash-compare-row { display: flex; flex-direction: column; gap: .3rem; }
+    .hash-compare-row label { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .hash-compare-row code { font-family: var(--mono); font-size: .78rem; word-break: break-all; padding: .5rem .7rem; border-radius: 6px; display: block; }
+    .hash-match   { background: rgba(0,206,201,0.08);  color: var(--success); border: 1px solid rgba(0,206,201,0.2); }
+    .hash-nomatch { background: rgba(255,107,107,0.08); color: var(--danger);  border: 1px solid rgba(255,107,107,0.2); }
+    .hash-neutral { background: rgba(0,0,0,0.15); color: var(--warn); border: 1px solid var(--border); }
+
+    /* ── Model ID result box ── */
+    .model-id-box {
+      background: rgba(108,92,231,0.1); border: 1px solid rgba(108,92,231,0.3);
+      border-radius: 10px; padding: 1rem 1.2rem; margin-top: 1rem; animation: slideUpFade .3s ease;
+    }
+    .model-id-box label { font-size: .75rem; font-weight: 700; color: var(--primary-h); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: .4rem; }
+    .model-id-box .id-row { display: flex; align-items: center; gap: .5rem; }
+    .model-id-box code { font-family: var(--mono); font-size: .9rem; color: var(--text); flex: 1; word-break: break-all; }
+
+    /* ── Mining badge ── */
+    .mining-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      margin-top: .6rem; padding: .3rem .7rem; border-radius: 20px;
+      background: rgba(254,202,87,0.1); border: 1px solid rgba(254,202,87,0.3);
+      color: var(--warn); font-size: .78rem; font-weight: 600; font-family: var(--mono);
     }
 
-    /* ═══════════ Status ═══════════ */
-    .status { padding: .7rem .9rem; border-radius: 8px; margin-top: .85rem; font-size: .88rem; display: none; }
-    .status.show { display: block; }
-    .status.ok   { background: rgba(0,206,201,.12); border: 1px solid var(--success); color: var(--success); }
-    .status.err  { background: rgba(255,107,107,.12); border: 1px solid var(--danger); color: var(--danger); }
-    .status.info { background: rgba(108,92,231,.12); border: 1px solid var(--primary); color: var(--primary-h); }
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 3rem 2rem; color: var(--text-muted); }
+    .empty-state .empty-icon { font-size: 3.5rem; margin-bottom: 1rem; display: block; opacity: .6; }
+    .empty-state p { font-size: .95rem; margin-bottom: 1.2rem; }
 
-    /* ═══════════ Tables ═══════════ */
-    .tbl { width: 100%; border-collapse: collapse; margin-top: .75rem; font-size: .82rem; }
-    .tbl th { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 500; }
-    .tbl td { padding: .5rem .6rem; border-bottom: 1px solid rgba(255,255,255,.03); }
-    .tbl tr:hover { background: rgba(255,255,255,.02); }
-
-    /* ═══════════ Badges ═══════════ */
-    .badge { display: inline-block; padding: .1rem .5rem; border-radius: 10px; font-size: .75rem; font-weight: 600; }
-    .badge-ok  { background: rgba(0,206,201,.18); color: var(--success); }
-    .badge-err { background: rgba(255,107,107,.18); color: var(--danger); }
-
-    /* ═══════════ Blockchain Explorer ═══════════ */
-    .block-card {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 1rem; margin-bottom: .75rem; position: relative;
+    /* ── Skeletons & Spinners ── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface2) 25%, rgba(255,255,255,0.05) 50%, var(--surface2) 75%);
+      background-size: 200% 100%; animation: skeletonLoad 1.5s infinite;
+      border-radius: 6px; height: 1.2rem; margin-bottom: 0.5rem;
     }
-    .block-card::before {
-      content: ''; position: absolute; top: -12px; left: 30px; width: 2px; height: 12px;
-      background: var(--primary); opacity: .5;
-    }
-    .block-card:first-child::before { display: none; }
-    .block-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
-    .block-hdr strong { font-size: .95rem; }
-    .block-hdr span { font-size: .75rem; color: var(--text-muted); }
-    .block-row { font-size: .8rem; margin-bottom: .25rem; }
-    .block-row strong { color: var(--text-muted); font-weight: 500; }
-    .block-row code { font-family: var(--mono); font-size: .72rem; color: var(--warn); }
-    details { margin-top: .4rem; font-size: .78rem; }
-    details summary { cursor: pointer; color: var(--primary-h); }
-    details pre { background: var(--bg); padding: .5rem; border-radius: 6px; margin-top: .3rem; overflow-x: auto; font-size: .72rem; color: var(--text-muted); }
-
-    /* ═══════════ Spinner ═══════════ */
-    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .5s linear infinite; }
+    @keyframes skeletonLoad { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; flex-shrink: 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ═══════════ Responsive ═══════════ */
-    @media (max-width: 700px) {
-      .header { flex-direction: column; }
+    /* ── Blockchain Block Cards ── */
+    .chain-wrapper { overflow-x: auto; overflow-y: hidden; padding: 1.5rem 1.2rem 2rem; }
+    .chain-container { display: flex; align-items: flex-start; gap: 0; width: max-content; padding: 0; }
+
+    .chain-connector { display: flex; align-items: center; margin-top: 3.2rem; flex-shrink: 0; width: 60px; }
+    .chain-connector svg { width: 60px; height: 20px; }
+
+    .block-card {
+      width: 300px; flex-shrink: 0; border-radius: 18px; overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: linear-gradient(160deg, rgba(20,25,40,0.9) 0%, rgba(12,16,28,0.95) 100%);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      position: relative;
+    }
+    .block-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--primary-h), var(--success));
+    }
+    .block-card.genesis::before { background: linear-gradient(90deg, #f0b429, #f6d860, #f0b429); }
+    .block-card:hover { transform: translateY(-6px); box-shadow: 0 20px 50px rgba(0,0,0,0.45), 0 4px 12px rgba(108,92,231,0.2); }
+
+    .bc-hdr {
+      padding: 1rem 1.2rem .7rem; display: flex; justify-content: space-between; align-items: flex-start;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .bc-index { font-size: 1.15rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: .4rem; }
+    .bc-index-badge {
+      font-size: .7rem; font-weight: 700; padding: .15rem .45rem; border-radius: 20px;
+      background: rgba(108,92,231,0.2); color: var(--primary-h); border: 1px solid rgba(108,92,231,0.3);
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .block-card.genesis .bc-index-badge { background: rgba(240,180,41,0.15); color: #f6d860; border-color: rgba(240,180,41,0.3); }
+    .bc-time { font-size: .72rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: .2rem .5rem; border-radius: 6px; }
+
+    .bc-body { padding: .8rem 1.2rem; display: flex; flex-direction: column; gap: .6rem; }
+    .bc-field { display: flex; flex-direction: column; gap: .15rem; }
+    .bc-field-label {
+      font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); display: flex; align-items: center; gap: .3rem;
+    }
+    .bc-field-label::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+    .block-card.genesis .bc-field-label::before { background: #f6d860; }
+    .bc-hash-val {
+      font-family: var(--mono); font-size: .72rem; color: var(--warn);
+      background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 7px; padding: .4rem .6rem; word-break: break-all;
+      display: flex; align-items: center; justify-content: space-between; gap: .3rem;
+    }
+    .bc-hash-val span { flex: 1; word-break: break-all; }
+    .bc-copy { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: .1rem; font-size: .8rem; transition: color 0.2s; flex-shrink: 0; }
+    .bc-copy:hover { color: var(--primary-h); }
+    .bc-copy.copied { color: var(--success); }
+
+    .bc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; padding: .7rem 1.2rem; border-top: 1px solid rgba(255,255,255,0.06); }
+    .bc-stat { background: rgba(0,0,0,0.2); border-radius: 8px; padding: .5rem .7rem; }
+    .bc-stat-val { font-family: var(--mono); font-size: .95rem; font-weight: 600; color: var(--text); }
+    .bc-stat-lbl { font-size: .65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-top: .1rem; }
+
+    .bc-txns { border-top: 1px solid rgba(255,255,255,0.06); }
+    .bc-txns-toggle {
+      width: 100%; background: none; border: none; padding: .7rem 1.2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; color: var(--primary-h); font-family: var(--font); font-size: .82rem; font-weight: 600;
+      transition: background 0.2s;
+    }
+    .bc-txns-toggle:hover { background: rgba(108,92,231,0.08); }
+    .bc-txns-arrow { font-size: .6rem; transition: transform 0.2s; }
+    .bc-txns-body { display: none; padding: .5rem 1.2rem .8rem; max-height: 200px; overflow-y: auto; }
+    .bc-txns-body.open { display: block; animation: slideUpFade .2s ease; }
+    .bc-txns-body pre { font-family: var(--mono); font-size: .7rem; color: var(--text-muted); white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+    .bc-txns-body::-webkit-scrollbar { width: 4px; }
+    .bc-txns-body::-webkit-scrollbar-track { background: transparent; }
+    .bc-txns-body::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+
+    /* ── My Models grid ── */
+    .model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap: 1rem; margin-top: 1rem; }
+    .model-item {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.2rem;
+      transition: transform 0.2s, border-color 0.2s; position: relative; overflow: hidden;
+    }
+    .model-item::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--primary), var(--success)); }
+    .model-item:hover { transform: translateY(-3px); border-color: rgba(108,92,231,0.3); }
+    .model-item-name { font-weight: 700; font-size: 1rem; margin-bottom: .3rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .model-item-id { font-family: var(--mono); font-size: .72rem; color: var(--text-muted); margin-bottom: .7rem; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+    .model-item-id code { word-break: break-all; }
+    .model-item-meta { font-size: .8rem; color: var(--text-muted); display: flex; gap: 1rem; flex-wrap: wrap; margin-top: .5rem; }
+    .model-item-actions { margin-top: .9rem; display: flex; gap: .5rem; flex-wrap: wrap; }
+
+    /* ── Block Details Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+      align-items: center; justify-content: center; padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; animation: fadeIn .18s ease; }
+    .modal-box {
+      background: linear-gradient(160deg, rgba(20,25,40,0.98) 0%, rgba(12,16,28,0.99) 100%);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 20px;
+      width: 100%; max-width: 680px; max-height: 88vh; overflow-y: auto;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.6); animation: slideUpFade .22s ease;
+    }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.2rem 1.5rem; border-bottom: 1px solid var(--border); position: sticky; top: 0;
+      background: rgba(12,16,28,0.97); border-radius: 20px 20px 0 0; z-index: 1;
+    }
+    .modal-head h3 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: .5rem; }
+    .modal-close {
+      background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+      color: var(--text); width: 32px; height: 32px; border-radius: 8px;
+      cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .modal-close:hover { background: rgba(255,107,107,0.2); border-color: var(--danger); color: var(--danger); }
+    .modal-body { padding: 1.4rem 1.5rem; }
+    .modal-section { margin-bottom: 1.4rem; }
+    .modal-section-title {
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--text-muted); margin-bottom: .7rem;
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .modal-section-title::before { content:''; display:inline-block; width:3px; height:12px; border-radius:2px; background: var(--primary); }
+    .modal-kv { display: grid; grid-template-columns: 140px 1fr; gap: .5rem 1rem; font-size: .84rem; }
+    .modal-kv-label { color: var(--text-muted); font-weight: 600; padding-top: .1rem; }
+    .modal-kv-val { word-break: break-all; font-family: var(--mono); color: var(--text); }
+    .modal-hash-row { display: flex; align-items: flex-start; gap: .5rem; }
+    .modal-hash-row code { flex: 1; word-break: break-all; font-size: .78rem; background: rgba(255,255,255,0.04); padding: .4rem .6rem; border-radius: 6px; border: 1px solid var(--border); }
+    .modal-tx-list { display: flex; flex-direction: column; gap: .6rem; }
+    .modal-tx-item {
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 10px; padding: .75rem 1rem; font-size: .8rem;
+    }
+    .modal-tx-type {
+      display: inline-flex; align-items: center; gap: .3rem;
+      font-size: .7rem; font-weight: 700; text-transform: uppercase;
+      padding: .2rem .55rem; border-radius: 20px; margin-bottom: .45rem;
+    }
+    .modal-tx-type.register { background: rgba(108,92,231,0.15); color: var(--primary); border: 1px solid rgba(108,92,231,0.3); }
+    .modal-tx-type.verify   { background: rgba(0,206,201,0.1);   color: var(--success);  border: 1px solid rgba(0,206,201,0.25); }
+    .modal-tx-type.genesis  { background: rgba(240,180,41,0.12); color: #f6d860;         border: 1px solid rgba(240,180,41,0.3); }
+    .modal-tx-type.add_version { background: rgba(253,203,110,0.12); color: var(--warn); border: 1px solid rgba(253,203,110,0.3); }
+    .block-card { cursor: pointer; }
+    .block-card .bc-open-hint {
+      text-align: center; font-size: .72rem; color: var(--text-muted);
+      padding: .5rem; opacity: 0; transition: opacity .2s;
+    }
+    .block-card:hover .bc-open-hint { opacity: 1; }
+
+    /* ── Welcome Modal ── */
+    .welcome-overlay {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center; padding: 1rem;
+    }
+    .welcome-overlay.open { display: flex; animation: fadeIn .25s ease; }
+    .welcome-box {
+      background: linear-gradient(160deg, rgba(22,28,48,0.99) 0%, rgba(12,16,28,1) 100%);
+      border: 1px solid rgba(108,92,231,0.3); border-radius: 24px;
+      width: 100%; max-width: 560px; padding: 2.2rem 2rem 1.8rem;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 60px rgba(108,92,231,0.15);
+      animation: slideUpFade .3s ease;
+    }
+    .welcome-logo { font-size: 2.5rem; text-align: center; margin-bottom: .4rem; }
+    .welcome-title { font-size: 1.5rem; font-weight: 800; text-align: center; margin-bottom: .3rem; }
+    .welcome-sub { text-align: center; color: var(--text-muted); font-size: .9rem; margin-bottom: 1.8rem; }
+    .steps-grid { display: flex; flex-direction: column; gap: .8rem; margin-bottom: 1.8rem; }
+    .step-item {
+      display: flex; align-items: flex-start; gap: .9rem;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 12px; padding: .85rem 1rem;
+    }
+    .step-num {
+      width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--primary), #a29bfe);
+      display: flex; align-items: center; justify-content: center;
+      font-size: .78rem; font-weight: 800; color: #fff;
+    }
+    .step-content h4 { margin: 0 0 .2rem; font-size: .88rem; font-weight: 700; }
+    .step-content p  { margin: 0; font-size: .78rem; color: var(--text-muted); }
+    .welcome-user-row { display: flex; gap: .7rem; align-items: center; margin-bottom: 1.2rem; }
+    .welcome-user-row input {
+      flex: 1; padding: .7rem 1rem; border-radius: 10px; font-size: .9rem;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      color: var(--text); outline: none;
+    }
+    .welcome-user-row input:focus { border-color: var(--primary); }
+    .welcome-footer { text-align: center; font-size: .72rem; color: var(--text-muted); margin-top: .8rem; }
+
+    /* ── FAQ / Help Tab ── */
+    .faq-item { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: .7rem; }
+    .faq-q {
+      width: 100%; text-align: left; padding: .9rem 1.1rem; background: rgba(255,255,255,0.03);
+      border: none; color: var(--text); font-size: .88rem; font-weight: 600;
+      cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      transition: background .15s;
+    }
+    .faq-q:hover { background: rgba(255,255,255,0.06); }
+    .faq-q .faq-arrow { transition: transform .2s; color: var(--text-muted); }
+    .faq-q.open .faq-arrow { transform: rotate(180deg); }
+    .faq-a { display: none; padding: .85rem 1.1rem 1rem; font-size: .83rem; color: var(--text-muted); line-height: 1.65; border-top: 1px solid var(--border); }
+    .faq-a.open { display: block; animation: slideUpFade .15s ease; }
+    .faq-a code { background: rgba(255,255,255,0.07); padding: .1rem .35rem; border-radius: 4px; font-family: var(--mono); font-size: .8rem; }
+
+    /* ── Quickstart cards ── */
+    .qs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .qs-card {
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.1rem; cursor: pointer; transition: border-color .2s, transform .2s;
+    }
+    .qs-card:hover { border-color: var(--primary); transform: translateY(-3px); }
+    .qs-card .qs-icon { font-size: 1.8rem; margin-bottom: .5rem; }
+    .qs-card h4 { margin: 0 0 .25rem; font-size: .88rem; font-weight: 700; }
+    .qs-card p  { margin: 0; font-size: .75rem; color: var(--text-muted); }
+
+    /* ── Username hint ── */
+    .username-hint { font-size: .7rem; color: var(--warn); margin-top: .3rem; display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .header { flex-direction: column; padding: 1rem; }
       .stats { grid-template-columns: 1fr; }
-      .tabs { gap: 0; }
+      .app { padding: 1rem; }
+      .block-card { width: 260px; }
+      .welcome-box { padding: 1.5rem 1.2rem; }
+      .qs-grid { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
 <body>
 
-<!-- ═══════════ Header ═══════════ -->
 <header class="header">
   <div class="logo">
     <div class="logo-icon">🔗</div>
     <span>BlockVerify</span>
   </div>
   <div class="user-box">
-    <label>Username:</label>
-    <input type="text" id="username" placeholder="e.g. alice" />
+    <!-- Shown when logged OUT -->
+    <div id="headerLoggedOut">
+      <button class="btn-login-header" onclick="openAuthModal('login')">🔐 Login / Register</button>
+    </div>
+    <!-- Shown when logged IN -->
+    <div id="headerLoggedIn" style="display:none;align-items:center;gap:.5rem;">
+      <div class="user-pill">
+        <div class="avatar" id="userAvatar">?</div>
+        <span id="userLabel">—</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+      <button onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;outline:none;transition:transform 0.2s;" id="themeToggle" title="Toggle theme" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">☀️</button>
+      <button onclick="showWelcome()" title="Quick start guide" style="background:rgba(108,92,231,0.15);border:1px solid rgba(108,92,231,0.3);color:var(--primary);border-radius:8px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem;font-weight:700;">❓ Help</button>
+    </div>
   </div>
 </header>
 
-<!-- ═══════════ App ═══════════ -->
+<div id="toastContainer" class="toast-container"></div>
+
 <div class="app">
 
   <!-- Stats -->
   <div class="stats">
-    <div class="stat-card"><div class="stat-val" id="sModels">0</div><div class="stat-lbl">Models Registered</div></div>
-    <div class="stat-card"><div class="stat-val" id="sVerify">0</div><div class="stat-lbl">Verifications</div></div>
-    <div class="stat-card"><div class="stat-val" id="sBlocks">0</div><div class="stat-lbl">Blockchain Blocks</div></div>
+    <div class="stat-card"><div class="stat-val" id="sModels">—</div><div class="stat-lbl">Models Registered</div></div>
+    <div class="stat-card"><div class="stat-val" id="sVerify">—</div><div class="stat-lbl">Verifications</div></div>
+    <div class="stat-card"><div class="stat-val" id="sBlocks">—</div><div class="stat-lbl">Blockchain Blocks</div></div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('register',this)">📝 Register</button>
-    <button class="tab" onclick="switchTab('verify',this)">✅ Verify</button>
-    <button class="tab" onclick="switchTab('versions',this)">📋 Versions</button>
-    <button class="tab" onclick="switchTab('audit',this)">🔍 Audit Trail</button>
-    <button class="tab" onclick="switchTab('models',this)">📦 My Models</button>
-    <button class="tab" onclick="switchTab('explorer',this)">🔗 Explorer</button>
+    <button class="tab active"  onclick="switchTab('register',this)">📝 Register</button>
+    <button class="tab"         onclick="switchTab('verify',this)">✅ Verify</button>
+    <button class="tab"         onclick="switchTab('versions',this)">📋 Versions</button>
+    <button class="tab"         onclick="switchTab('audit',this)">🔍 Audit Trail</button>
+    <button class="tab"         onclick="switchTab('models',this)">📦 My Models</button>
+    <button class="tab"         onclick="switchTab('explorer',this)">🔗 Explorer</button>
+    <button class="tab"         onclick="switchTab('help',this)">❓ Help</button>
   </div>
 
-  <!-- ═══ Register ═══ -->
+  <!-- Register -->
   <div class="tab-content active" id="tab-register">
     <div class="card">
       <h2>📝 Register AI Model</h2>
-      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem;">Upload a model file to compute its SHA-256 hash and register it on the blockchain.</p>
+      <p class="subtitle">Upload a model file to compute its SHA-256 hash and register it on the blockchain.</p>
       <div class="fg">
         <label>Model File</label>
         <div class="file-drop" id="regDrop" onclick="document.getElementById('regFile').click()">
-          <p>📂 Click or drag &amp; drop a model file</p>
+          <span class="icon">📂</span>
+          <p>Click or drag &amp; drop a model file</p>
           <div class="file-name" id="regFN"></div>
         </div>
         <input type="file" id="regFile" style="display:none" onchange="onFile('reg')">
       </div>
-      <div id="regHashWrap" style="display:none">
-        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
-        <div class="hash-box" id="regHash"></div>
+      <div id="regHashWrap" style="display:none;margin-bottom:1rem;">
+        <label style="font-size:.8rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:.4rem;">SHA-256 Hash</label>
+        <div class="hash-box"><span id="regHash"></span><button class="copy-btn" onclick="copyText(document.getElementById('regHash').textContent, this)">Copy</button></div>
       </div>
-      <div class="fg" style="margin-top:.75rem"><label>Model Name *</label><input type="text" id="regName" placeholder="e.g. ResNet50-Health-v1"></div>
+      <div class="fg"><label>Model Name *</label><input type="text" id="regName" placeholder="e.g. ResNet50-Health-v1"></div>
       <div class="fg"><label>Metadata (optional)</label><textarea id="regMeta" placeholder="IPFS CID, description, etc."></textarea></div>
       <button class="btn" id="regBtn" onclick="registerModel()">Register Model</button>
-      <div class="status" id="regStatus"></div>
+      <div id="rateLimitBar" style="display:none;margin-top:.8rem;font-size:.78rem;color:var(--text-muted);"></div>
+      <div id="regModelResult"></div>
     </div>
   </div>
 
-  <!-- ═══ Verify ═══ -->
+  <!-- Verify -->
   <div class="tab-content" id="tab-verify">
     <div class="card">
       <h2>✅ Verify Model Integrity</h2>
-      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem;">Upload a model file and provide its Model ID to check against the blockchain record.</p>
+      <p class="subtitle">Upload a model file and provide its Model ID to check against the blockchain record.</p>
       <div class="fg">
         <label>Model File</label>
         <div class="file-drop" id="verDrop" onclick="document.getElementById('verFile').click()">
-          <p>📂 Click or drag &amp; drop the model file</p>
+          <span class="icon">📂</span>
+          <p>Click or drag &amp; drop the model file</p>
           <div class="file-name" id="verFN"></div>
         </div>
         <input type="file" id="verFile" style="display:none" onchange="onFile('ver')">
       </div>
-      <div id="verHashWrap" style="display:none">
-        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
-        <div class="hash-box" id="verHash"></div>
+      <div id="verHashWrap" style="display:none;margin-bottom:1rem;">
+        <label style="font-size:.8rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:.4rem;">SHA-256 Hash</label>
+        <div class="hash-box"><span id="verHash"></span><button class="copy-btn" onclick="copyText(document.getElementById('verHash').textContent, this)">Copy</button></div>
       </div>
-      <div class="fg" style="margin-top:.75rem"><label>Model ID</label><input type="text" id="verModelId" placeholder="Paste the model ID you received at registration"></div>
-      <button class="btn" onclick="verifyModel()">Verify Integrity</button>
-      <div class="status" id="verStatus"></div>
+      <div class="fg"><label>Model ID</label><input type="text" id="verModelId" placeholder="Paste the model ID you received at registration"></div>
+      <button class="btn" id="verBtn" onclick="verifyModel()">Verify Integrity</button>
       <div id="verResult"></div>
     </div>
   </div>
 
-  <!-- ═══ Versions ═══ -->
+  <!-- Versions -->
   <div class="tab-content" id="tab-versions">
     <div class="card">
       <h2>📋 Version History</h2>
@@ -278,72 +648,445 @@
       <div class="fg">
         <label>New Model File</label>
         <div class="file-drop" id="avDrop" onclick="document.getElementById('avFile').click()">
-          <p>📂 Select the updated model file</p>
+          <span class="icon">📂</span>
+          <p>Select the updated model file</p>
           <div class="file-name" id="avFN"></div>
         </div>
         <input type="file" id="avFile" style="display:none" onchange="onFile('av')">
       </div>
-      <div id="avHashWrap" style="display:none">
-        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
-        <div class="hash-box" id="avHash"></div>
+      <div id="avHashWrap" style="display:none;margin-bottom:1rem;">
+        <label style="font-size:.8rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:.4rem;">SHA-256 Hash</label>
+        <div class="hash-box"><span id="avHash"></span><button class="copy-btn" onclick="copyText(document.getElementById('avHash').textContent, this)">Copy</button></div>
       </div>
-      <div class="fg" style="margin-top:.75rem"><label>Changelog *</label><textarea id="avLog" placeholder="Describe changes in this version..."></textarea></div>
-      <button class="btn" onclick="addVersion()">Add Version</button>
-      <div class="status" id="avStatus"></div>
+      <div class="fg"><label>Changelog *</label><textarea id="avLog" placeholder="Describe changes in this version..."></textarea></div>
+      <button class="btn" id="avBtn" onclick="addVersion()">Add Version</button>
     </div>
   </div>
 
-  <!-- ═══ Audit ═══ -->
+  <!-- Audit -->
   <div class="tab-content" id="tab-audit">
     <div class="card">
       <h2>🔍 Verification Audit Trail</h2>
       <div class="fg"><label>Model ID</label><input type="text" id="auditId" placeholder="Model ID"></div>
-      <button class="btn btn-sec" onclick="loadAudit()">Load Audit Trail</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+        <button class="btn btn-sec" onclick="loadAudit()">Load Audit Trail</button>
+        <button class="btn" id="exportCsvBtn" onclick="exportAuditCSV()" style="display:none;">⬇ Download CSV</button>
+      </div>
       <div id="auditResult"></div>
     </div>
   </div>
 
-  <!-- ═══ My Models ═══ -->
+  <!-- My Models -->
   <div class="tab-content" id="tab-models">
     <div class="card">
       <h2>📦 My Registered Models</h2>
-      <button class="btn btn-sec" onclick="loadMyModels()">Refresh</button>
+      <p class="subtitle">Models registered under your username.</p>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem;">
+        <button class="btn btn-sec" onclick="loadMyModels()">Refresh</button>
+        <input type="text" id="modelSearch" placeholder="Search by name or ID…" oninput="filterModels()" style="flex:1;min-width:180px;max-width:320px;" />
+      </div>
       <div id="modelsResult" style="margin-top:.75rem;"></div>
     </div>
   </div>
 
-  <!-- ═══ Blockchain Explorer ═══ -->
+  <!-- Explorer -->
   <div class="tab-content" id="tab-explorer">
     <div class="card">
       <h2>🔗 Blockchain Explorer</h2>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <p class="subtitle">Browse every block and transaction on the chain.</p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button class="btn btn-sec" onclick="loadChain()">Refresh Chain</button>
-        <button class="btn" onclick="validateChain()">Validate Chain Integrity</button>
+        <button class="btn" id="validateBtn" onclick="validateChain()">Validate Chain Integrity</button>
+        <button class="btn" id="tamperBtn" onclick="runTamperDemo()" style="background:linear-gradient(135deg,#e84393,#c0392b);">⚠️ Simulate Tamper Attack</button>
       </div>
-      <div id="chainValid" style="margin-top:.75rem;"></div>
-      <div id="chainView" style="margin-top:.75rem;"></div>
+      <div id="tamperResult" style="display:none;"></div>
+      <div id="chainValid"></div>
+      <div id="chainView"></div>
+      <div id="chainPager" style="display:none;margin-top:1.2rem;align-items:center;justify-content:center;gap:.8rem;">
+        <button class="btn btn-sec" id="pgPrev" onclick="changePage(-1)" style="padding:.5rem 1.1rem;">← Prev</button>
+        <span id="pgLabel" style="font-size:.88rem;color:var(--text-muted);"></span>
+        <button class="btn btn-sec" id="pgNext" onclick="changePage(1)" style="padding:.5rem 1.1rem;">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help / FAQ -->
+  <div class="tab-content" id="tab-help">
+    <div class="card">
+      <h2>❓ Help &amp; Quick Start</h2>
+      <p class="subtitle">New here? Start with the quick-start cards, then browse the FAQ below.</p>
+
+      <!-- Quick Start -->
+      <div style="margin-bottom:1.4rem;">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.8rem;">🚀 Quick Start</div>
+        <div class="qs-grid">
+          <div class="qs-card" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">
+            <div class="qs-icon">📝</div>
+            <h4>1. Register a Model</h4>
+            <p>Upload any file → get its SHA-256 hash → save it on the blockchain forever.</p>
+          </div>
+          <div class="qs-card" onclick="switchTab('verify',document.querySelectorAll('.tab')[1])">
+            <div class="qs-icon">✅</div>
+            <h4>2. Verify Integrity</h4>
+            <p>Re-upload the same file later → compare hashes → instantly know if it was tampered.</p>
+          </div>
+          <div class="qs-card" onclick="switchTab('models',document.querySelectorAll('.tab')[4])">
+            <div class="qs-icon">📦</div>
+            <h4>3. Manage Models</h4>
+            <p>View all your registered models, add new versions, or deactivate old ones.</p>
+          </div>
+          <div class="qs-card" onclick="switchTab('explorer',document.querySelectorAll('.tab')[5])">
+            <div class="qs-icon">🔗</div>
+            <h4>4. Explore the Chain</h4>
+            <p>Browse every block. Click any block to inspect its full contents and transactions.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- FAQ -->
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.8rem;">💬 Frequently Asked Questions</div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is BlockVerify? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">BlockVerify is a custom blockchain system that lets you register AI models and verify their integrity over time. Every registration creates an immutable record on our blockchain — if someone tampers with the model file, the hash won't match and you'll know immediately.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Do I need to create an account? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">No account needed. Just type any username in the top-right field and start using the app. Your username is used as the owner tag for your models — pick something memorable so you can find your models later in the <strong>My Models</strong> tab.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What file types can I register? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Any file — <code>.pt</code>, <code>.h5</code>, <code>.pkl</code>, <code>.onnx</code>, <code>.bin</code>, PDFs, ZIPs, etc. The app only reads the file to compute its SHA-256 hash. The file itself is never uploaded to any server — all hashing happens in your browser.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is a Model ID and where do I find it? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">When you register a model, a unique 16-character Model ID is generated (e.g. <code>a3f9b2c1d4e8f7a0</code>). It is automatically copied to your clipboard. You can also find all your Model IDs in the <strong>My Models</strong> tab. Keep this ID — you need it for verification and version history.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">How do I verify a model? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Go to the <strong>Verify</strong> tab → upload the model file → paste the Model ID → click Verify. If the SHA-256 hash of your file matches what's stored on the blockchain, it's verified as intact. If it doesn't match, the model has been modified since registration.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is Proof-of-Work (PoW) mining? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Each write operation (register, verify, add version) creates a new blockchain block. Mining means finding a nonce value that makes the block's SHA-256 hash start with <code>0000</code>. This takes thousands of attempts and makes the chain computationally expensive to tamper with. You can see mining time and attempts in the ⛏ badge after each operation.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What does "Simulate Tamper Attack" do? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">It's a safe demo in the Explorer tab. The backend temporarily modifies a block's data, runs the chain validator (which detects the change), then immediately restores the original data. Nothing is permanently changed — it just proves your blockchain can detect tampering.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is the rate limit? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Each username can perform at most <strong>10 write operations</strong> (register, verify, add version) per 60 seconds. This prevents the blockchain from being flooded. If you hit the limit, wait a moment and try again — the Register tab shows your remaining quota after each operation.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Why does the app say "Network error"? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">The backend server may not be running. Make sure you started it with <code>python backend/app.py</code> from the project root. If using the hosted version, the Render free tier may be sleeping — wait 30 seconds and try again after the first request wakes it up.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Is my data safe? What happens when the server restarts? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">All data is persisted to JSON files in <code>backend/data/</code> on every write. If the server restarts, data is reloaded automatically. On Render's free tier, the disk is ephemeral — data resets on each deploy. For production use, attach a persistent disk.</div>
+      </div>
     </div>
   </div>
 
 </div>
 
-<!-- ═══════════ JavaScript ═══════════ -->
+<!-- Welcome / Onboarding Modal -->
+<div class="welcome-overlay" id="welcomeModal">
+  <div class="welcome-box">
+    <div class="welcome-logo">🔗</div>
+    <div class="welcome-title">Welcome to BlockVerify</div>
+    <div class="welcome-sub">A custom blockchain for AI model integrity verification. Here's how it works in 3 steps:</div>
+    <div class="steps-grid">
+      <div class="step-item">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Register your AI model</h4>
+          <p>Upload any model file — we compute its SHA-256 fingerprint and record it permanently on the blockchain.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Get your Model ID</h4>
+          <p>A unique 16-char ID is generated and auto-copied to your clipboard. Save it — you'll need it to verify later.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Verify integrity anytime</h4>
+          <p>Re-upload the model + paste the ID → instant tamper detection. Hash mismatch = model was modified.</p>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.6rem;font-weight:600;">Enter a username to get started:</div>
+    <div class="welcome-user-row">
+      <input type="text" id="welcomeUsername" placeholder="e.g. alice, mihir, john…" maxlength="32" onkeydown="if(event.key==='Enter')startFromWelcome()" />
+      <button class="btn" onclick="startFromWelcome()" style="white-space:nowrap;">Get Started →</button>
+    </div>
+    <div class="welcome-footer">Your username is stored locally — no sign-up required. &nbsp;·&nbsp; <a href="#" onclick="event.preventDefault();closeWelcome()" style="color:var(--primary);">Skip for now</a></div>
+  </div>
+</div>
+
+<!-- Block Details Modal -->
+<div class="modal-overlay" id="blockModal" onclick="closeBlockModal(event)">
+  <div class="modal-box" id="blockModalBox">
+    <div class="modal-head">
+      <h3 id="modalTitle">🧱 Block Details</h3>
+      <button class="modal-close" onclick="closeBlockModal(null)" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Auth Modal -->
+<div class="auth-overlay" id="authModal">
+  <div class="auth-box">
+    <div class="auth-logo">🔐</div>
+    <div class="auth-title" id="authModalTitle">Welcome Back</div>
+    <div class="auth-sub" id="authModalSub">Sign in to register and verify AI models on the blockchain.</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="authTabLogin" onclick="switchAuthTab('login')">Login</button>
+      <button class="auth-tab" id="authTabRegister" onclick="switchAuthTab('register')">Register</button>
+    </div>
+
+    <!-- Login form -->
+    <form class="auth-form active" id="authFormLogin" onsubmit="event.preventDefault();doLogin()">
+      <div class="auth-field">
+        <label>Username</label>
+        <input type="text" id="loginUsername" placeholder="your username" autocomplete="username" />
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <div class="auth-err" id="loginErr"></div>
+      <button class="auth-submit" id="loginBtn" type="submit">Login →</button>
+      <div class="auth-divider">Don't have an account? <a href="#" style="color:var(--primary);" onclick="event.preventDefault();switchAuthTab('register')">Register here</a></div>
+    </form>
+
+    <!-- Register form -->
+    <form class="auth-form" id="authFormRegister" onsubmit="event.preventDefault();doRegister()">
+      <div class="auth-field">
+        <label>Username <span style="color:var(--text-muted);font-weight:400;">(3–32 chars, letters/numbers/-/_)</span></label>
+        <input type="text" id="regUsername" placeholder="choose a username" autocomplete="username" />
+      </div>
+      <div class="auth-field">
+        <label>Password <span style="color:var(--text-muted);font-weight:400;">(min 6 characters)</span></label>
+        <input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password" />
+      </div>
+      <div class="auth-field">
+        <label>Confirm Password</label>
+        <input type="password" id="regConfirm" placeholder="••••••••" autocomplete="new-password" />
+      </div>
+      <div class="auth-err" id="registerErr"></div>
+      <button class="auth-submit" id="registerBtn" type="submit">Create Account →</button>
+      <div class="auth-divider">Already have an account? <a href="#" style="color:var(--primary);" onclick="event.preventDefault();switchAuthTab('login')">Login here</a></div>
+    </form>
+  </div>
+</div>
+
 <script>
-const API = 'http://localhost:5000/api';
-const hashes = {};  // section → computed hash hex string
+const API = window.location.hostname === 'localhost' || window.location.hostname === '0.0.0.0'
+  ? 'http://localhost:5000/api'
+  : 'https://course-project-submission-razor-hats.onrender.com/api';
+const hashes = {};
+let _allModels = [];
+let _allBlocks = [];
+const BLOCKS_PER_PAGE = 5;
+let _currentPage = 0;
 
-// ────────── Helpers ──────────
+// ── Auth state ──
+let _authToken = localStorage.getItem('bv_token') || null;
+let _authUser  = localStorage.getItem('bv_user')  || null;
 
-function getUser() {
-  const u = document.getElementById('username').value.trim();
-  if (!u) { alert('Please enter a username first.'); return null; }
-  return u;
+function getToken() { return _authToken; }
+function getUser()  {
+  if (!_authUser) { openAuthModal('login'); return null; }
+  return _authUser;
 }
 
-function status(id, type, msg) {
+function _saveAuth(token, username) {
+  _authToken = token; _authUser = username;
+  localStorage.setItem('bv_token', token);
+  localStorage.setItem('bv_user', username);
+}
+function _clearAuth() {
+  _authToken = null; _authUser = null;
+  localStorage.removeItem('bv_token');
+  localStorage.removeItem('bv_user');
+}
+
+// apiFetch — drop-in fetch() with auto Bearer + 401 handling
+async function apiFetch(url, opts = {}) {
+  opts.headers = opts.headers || {};
+  if (_authToken) opts.headers['Authorization'] = 'Bearer ' + _authToken;
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    _clearAuth();
+    updateAuthUI();
+    openAuthModal('login');
+    throw new Error('Session expired. Please log in again.');
+  }
+  return res;
+}
+
+// ── Auth UI helpers ──
+function updateAuthUI() {
+  const loggedIn = !!_authUser;
+  document.getElementById('headerLoggedOut').style.display = loggedIn ? 'none' : 'flex';
+  document.getElementById('headerLoggedIn').style.display  = loggedIn ? 'flex' : 'none';
+  if (loggedIn) {
+    document.getElementById('userLabel').textContent  = _authUser;
+    document.getElementById('userAvatar').textContent = _authUser[0].toUpperCase();
+  }
+}
+
+function openAuthModal(tab = 'login') {
+  switchAuthTab(tab);
+  document.getElementById('authModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => {
+    const el = tab === 'login'
+      ? document.getElementById('loginUsername')
+      : document.getElementById('regUsername');
+    if (el) el.focus();
+  }, 180);
+}
+function closeAuthModal() {
+  document.getElementById('authModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function switchAuthTab(tab) {
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+  ['login','register'].forEach(t => {
+    document.getElementById('authTab'  + cap(t)).classList.toggle('active', t === tab);
+    document.getElementById('authForm' + cap(t)).classList.toggle('active', t === tab);
+  });
+  if (tab === 'login') {
+    document.getElementById('authModalTitle').textContent = 'Welcome Back';
+    document.getElementById('authModalSub').textContent   = 'Sign in to register and verify AI models.';
+  } else {
+    document.getElementById('authModalTitle').textContent = 'Create Account';
+    document.getElementById('authModalSub').textContent   = 'Free and instant — no email required.';
+  }
+}
+
+function _setAuthLoading(btnId, loading, label) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.innerHTML = loading ? '<span class="spinner"></span> ' + label : label;
+}
+function _showAuthErr(id, msg) {
   const el = document.getElementById(id);
-  el.className = 'status show ' + type;
-  el.innerHTML = msg;
+  el.textContent = msg; el.classList.add('show');
+}
+function _clearAuthErr(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+async function doLogin() {
+  _clearAuthErr('loginErr');
+  const username = document.getElementById('loginUsername').value.trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value;
+  if (!username || !password) { _showAuthErr('loginErr', 'Username and password required.'); return; }
+  _setAuthLoading('loginBtn', true, 'Logging in...');
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    });
+    const d = await res.json();
+    if (!d.success) { _showAuthErr('loginErr', d.error); return; }
+    _saveAuth(d.token, d.username);
+    updateAuthUI();
+    closeAuthModal();
+    toast('ok', `Welcome back, ${d.username}! 👋`);
+    refreshStats();
+  } catch(e) { _showAuthErr('loginErr', 'Network error. Is the backend running?'); }
+  finally { _setAuthLoading('loginBtn', false, 'Login →'); }
+}
+
+async function doRegister() {
+  _clearAuthErr('registerErr');
+  const username = document.getElementById('regUsername').value.trim().toLowerCase();
+  const password = document.getElementById('regPassword').value;
+  const confirm  = document.getElementById('regConfirm').value;
+  if (!username || !password) { _showAuthErr('registerErr', 'All fields required.'); return; }
+  if (password !== confirm)   { _showAuthErr('registerErr', 'Passwords do not match.'); return; }
+  if (password.length < 6)   { _showAuthErr('registerErr', 'Password must be at least 6 characters.'); return; }
+  _setAuthLoading('registerBtn', true, 'Creating account...');
+  try {
+    const res = await fetch(API + '/auth/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    });
+    const d = await res.json();
+    if (!d.success) { _showAuthErr('registerErr', d.error); return; }
+    _saveAuth(d.token, d.username);
+    updateAuthUI();
+    closeAuthModal();
+    toast('ok', `Account created! Welcome, ${d.username} 🎉`);
+    refreshStats();
+  } catch(e) { _showAuthErr('registerErr', 'Network error. Is the backend running?'); }
+  finally { _setAuthLoading('registerBtn', false, 'Create Account →'); }
+}
+
+function logout() {
+  _clearAuth();
+  updateAuthUI();
+  _allModels = []; _allBlocks = [];
+  document.getElementById('modelsResult').innerHTML = '';
+  document.getElementById('chainView').innerHTML = '';
+  toast('info', 'Logged out successfully.');
+  openAuthModal('login');
+}
+
+function toast(type, msg, duration) {
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${msg}</span>`;
+  container.appendChild(el);
+  const ms = duration || (type === 'info' ? 1800 : 4500);
+  setTimeout(() => {
+    el.classList.add('hide');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }, ms);
+}
+
+function copyText(text, btn) {
+  const finish = () => {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(finish).catch(() => fallbackCopy(text, finish));
+  } else {
+    fallbackCopy(text, finish);
+  }
+}
+
+function fallbackCopy(text, callback) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+  if (callback) callback();
+}
+
+function setLoading(btnId, loading, label) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.innerHTML = loading ? `<span class="spinner"></span> ${label || 'Working...'}` : label;
 }
 
 function switchTab(name, btn) {
@@ -351,180 +1094,698 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'explorer') loadChain();
+  if (name === 'models')   loadMyModels();
 }
 
-// ────────── SHA-256 file hashing ──────────
-
-// Pure JS SHA-256 fallback for non-secure contexts (e.g. 0.0.0.0)
+// ── SHA-256 ──
 function sha256Fallback(buffer) {
-  const K = [
-    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
-  ];
-  const rr = (v,n) => (v>>>n)|(v<<(32-n));
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const rr=(v,n)=>(v>>>n)|(v<<(32-n));
   let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
-  const data = new Uint8Array(buffer);
-  const bitLen = data.length * 8;
-  const padded = new Uint8Array(((data.length+9+63)&~63));
-  padded.set(data); padded[data.length]=0x80;
-  const dv = new DataView(padded.buffer);
-  dv.setUint32(padded.length-4,bitLen,false);
-  for(let off=0;off<padded.length;off+=64){
-    const w=new Int32Array(64);
-    for(let i=0;i<16;i++) w[i]=dv.getInt32(off+i*4,false);
-    for(let i=16;i<64;i++){const s0=rr(w[i-15],7)^rr(w[i-15],18)^(w[i-15]>>>3);const s1=rr(w[i-2],17)^rr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0;}
-    let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;
-    for(let i=0;i<64;i++){const S1=rr(e,6)^rr(e,11)^rr(e,25);const ch=(e&f)^(~e&g);const t1=(h+S1+ch+K[i]+w[i])|0;const S0=rr(a,2)^rr(a,13)^rr(a,22);const mj=(a&b)^(a&c)^(b&c);const t2=(S0+mj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}
-    h0=(h0+a)|0;h1=(h1+b)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0;h5=(h5+f)|0;h6=(h6+g)|0;h7=(h7+h)|0;
-  }
+  const data=new Uint8Array(buffer),bitLen=data.length*8,padded=new Uint8Array(((data.length+9+63)&~63));
+  padded.set(data);padded[data.length]=0x80;const dv=new DataView(padded.buffer);dv.setUint32(padded.length-4,bitLen,false);
+  for(let off=0;off<padded.length;off+=64){const w=new Int32Array(64);for(let i=0;i<16;i++)w[i]=dv.getInt32(off+i*4,false);for(let i=16;i<64;i++){const s0=rr(w[i-15],7)^rr(w[i-15],18)^(w[i-15]>>>3);const s1=rr(w[i-2],17)^rr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0;}let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;for(let i=0;i<64;i++){const S1=rr(e,6)^rr(e,11)^rr(e,25);const ch=(e&f)^(~e&g);const t1=(h+S1+ch+K[i]+w[i])|0;const S0=rr(a,2)^rr(a,13)^rr(a,22);const mj=(a&b)^(a&c)^(b&c);const t2=(S0+mj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}h0=(h0+a)|0;h1=(h1+b)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0;h5=(h5+f)|0;h6=(h6+g)|0;h7=(h7+h)|0;}
   return [h0,h1,h2,h3,h4,h5,h6,h7].map(v=>(v>>>0).toString(16).padStart(8,'0')).join('');
 }
 
 async function computeHash(file) {
   const buf = await file.arrayBuffer();
-  // Use Web Crypto API if available (secure context), otherwise pure JS fallback
   if (window.crypto && window.crypto.subtle) {
     const hashBuf = await crypto.subtle.digest('SHA-256', buf);
-    return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
   }
   return sha256Fallback(buf);
 }
 
-async function onFile(section) {
-  const inputMap = { reg: 'regFile', ver: 'verFile', av: 'avFile' };
-  const file = document.getElementById(inputMap[section]).files[0];
+async function onFile(s) {
+  const inputMap = { reg:'regFile', ver:'verFile', av:'avFile' };
+  const file = document.getElementById(inputMap[s]).files[0];
   if (!file) return;
-  document.getElementById(section + 'FN').textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  document.getElementById(s+'FN').textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
   try {
     const hex = await computeHash(file);
-    hashes[section] = hex;
-    document.getElementById(section + 'HashWrap').style.display = 'block';
-    document.getElementById(section + 'Hash').textContent = hex;
-  } catch(e) { console.error('Hash error:', e); alert('Failed to compute hash: ' + e.message); }
+    hashes[s] = hex;
+    document.getElementById(s+'HashWrap').style.display = 'block';
+    document.getElementById(s+'Hash').textContent = hex;
+  } catch(e) { toast('err', 'Hash error: ' + e.message); }
 }
 
-// Drag-and-drop wiring
 ['reg','ver','av'].forEach(s => {
-  const drop = document.getElementById(s + 'Drop');
+  const drop = document.getElementById(s+'Drop');
   if (!drop) return;
   drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
   drop.addEventListener('drop', e => {
     e.preventDefault(); drop.classList.remove('dragover');
     const inputMap = { reg:'regFile', ver:'verFile', av:'avFile' };
-    document.getElementById(inputMap[s]).files = e.dataTransfer.files;
-    onFile(s);
+    const files = e.dataTransfer.files;
+    if (files.length) {
+      Object.defineProperty(document.getElementById(inputMap[s]), 'files', { value: files, writable: false, configurable: true });
+      onFile(s);
+    }
   });
 });
 
-// ────────── Stats ──────────
-
-async function loadStats() {
+// ── Stats ──
+let _statsRefreshing = false;
+async function refreshStats() {
+  if (_statsRefreshing) return;
+  _statsRefreshing = true;
   try {
     const r = await fetch(API + '/stats');
     const d = await r.json();
-    document.getElementById('sModels').textContent = d.totalModels;
-    document.getElementById('sVerify').textContent = d.totalVerifications;
-    document.getElementById('sBlocks').textContent = d.totalBlocks;
-  } catch(e) { console.error('Stats error:', e); }
+    document.getElementById('sModels').textContent = d.totalModels  ?? '—';
+    document.getElementById('sVerify').textContent = d.totalVerifications ?? '—';
+    document.getElementById('sBlocks').textContent = d.totalBlocks  ?? '—';
+  } catch(e) {
+    ['sModels','sVerify','sBlocks'].forEach(id => document.getElementById(id).textContent = '—');
+  } finally {
+    _statsRefreshing = false;
+  }
 }
 
-// ────────── Register ──────────
-
+// ── Register ──
 async function registerModel() {
   const user = getUser(); if (!user) return;
   const name = document.getElementById('regName').value.trim();
   const meta = document.getElementById('regMeta').value.trim();
   const hash = hashes.reg;
-  if (!hash) { status('regStatus','err','Please upload a model file first.'); return; }
-  if (!name) { status('regStatus','err','Model name is required.'); return; }
+  if (!hash) { toast('err', 'Please upload a model file first.'); return; }
+  if (!name) { toast('err', 'Model name is required.'); return; }
 
+  setLoading('regBtn', true, 'Mining block...');
+  document.getElementById('regModelResult').innerHTML = '';
   try {
-    status('regStatus','info','<span class="spinner"></span> Mining block & registering...');
-    const res = await fetch(API + '/register', {
+    const res = await apiFetch(API + '/register', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta, owner:user })
+      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta })
     });
     const d = await res.json();
     if (d.success) {
-      status('regStatus','ok',
-        `✅ Registered!<br><strong>Model ID:</strong> <code style="font-family:var(--mono);font-size:.78rem;">${d.modelId}</code><br><strong>Block #</strong>${d.blockIndex}<br><small>Save the Model ID for verification.</small>`);
-      document.getElementById('regName').value=''; document.getElementById('regMeta').value='';
-      document.getElementById('regFN').textContent=''; document.getElementById('regHashWrap').style.display='none'; hashes.reg=null;
-      loadStats();
-    } else { status('regStatus','err','❌ ' + d.error); }
-  } catch(e) { status('regStatus','err','❌ Network error: ' + e.message); }
+      fallbackCopy(d.modelId, null);
+      document.getElementById('regModelResult').innerHTML = `
+        <div class="model-id-box">
+          <label>✅ Model registered — ID copied to clipboard automatically</label>
+          <div class="id-row">
+            <code>${d.modelId}</code>
+            <button class="copy-btn" onclick="copyText('${d.modelId}', this)">Copy ID</button>
+          </div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Block #${d.blockIndex} · Owner: ${user}</div>
+          <div class="mining-badge">⛏ Mined in ${d.miningTime ?? '?'}s · ${(d.attempts ?? 0).toLocaleString()} attempts</div>
+        </div>`;
+      toast('ok', `Model "${name}" registered on Block #${d.blockIndex}`);
+      document.getElementById('regName').value = '';
+      document.getElementById('regMeta').value = '';
+      document.getElementById('regFN').textContent = '';
+      document.getElementById('regHashWrap').style.display = 'none';
+      hashes.reg = null;
+      refreshStats();
+      updateRateLimitBar(user);
+    } else { toast('err', d.error); }
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', 'Network error: ' + e.message); }
+  finally { setLoading('regBtn', false, 'Register Model'); }
 }
 
-// ────────── Verify ──────────
+async function updateRateLimitBar(owner) {
+  if (!owner) return;
+  try {
+    const r = await fetch(`${API}/rate-limit-status?owner=${encodeURIComponent(owner)}`);
+    const d = await r.json();
+    if (!d.success) return;
+    const bar = document.getElementById('rateLimitBar');
+    if (!bar) return;
+    const color = d.remaining <= 2 ? 'var(--danger)' : d.remaining <= 5 ? 'var(--warn)' : 'var(--success)';
+    bar.style.display = 'block';
+    bar.innerHTML = `⚡ Rate limit: <strong style="color:${color}">${d.remaining}/${d.limit}</strong> operations remaining in the next ${d.windowSeconds}s window`;
+  } catch(_) {}
+}
 
+// ── Verify ──
 async function verifyModel() {
   const user = getUser(); if (!user) return;
   const modelId = document.getElementById('verModelId').value.trim();
   const hash = hashes.ver;
-  if (!hash) { status('verStatus','err','Please upload the model file.'); return; }
-  if (!modelId) { status('verStatus','err','Model ID is required.'); return; }
+  if (!hash)    { toast('err', 'Please upload the model file.'); return; }
+  if (!modelId) { toast('err', 'Model ID is required.'); return; }
 
+  setLoading('verBtn', true, 'Verifying...');
+  document.getElementById('verResult').innerHTML = '';
   try {
-    status('verStatus','info','<span class="spinner"></span> Verifying...');
-    const res = await fetch(API + '/verify', {
+    const res = await apiFetch(API + '/verify', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelId, providedHash:hash, verifier:user })
+      body: JSON.stringify({ modelId, providedHash:hash })
     });
     const d = await res.json();
-    if (!d.success) { status('verStatus','err','❌ ' + d.error); return; }
-
-    if (d.isValid) {
-      status('verStatus','ok','✅ <strong>INTEGRITY VERIFIED</strong> — hash matches the blockchain record.');
-    } else {
-      status('verStatus','err','❌ <strong>INTEGRITY MISMATCH</strong> — the model may have been tampered with.');
-    }
-
+    if (!d.success) { toast('err', d.error); return; }
+    const valid = d.isValid;
     document.getElementById('verResult').innerHTML = `
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.8rem;margin-top:.6rem;font-size:.82rem;">
-        <div style="margin-bottom:.3rem;"><strong style="color:var(--text-muted);">Stored Hash:</strong> <code style="font-family:var(--mono);font-size:.72rem;">${d.storedHash}</code></div>
-        <div><strong style="color:var(--text-muted);">Your Hash:</strong> <code style="font-family:var(--mono);font-size:.72rem;">${d.providedHash}</code></div>
+      <div class="verify-result ${valid ? 'valid' : 'invalid'}">
+        <div class="verify-result-header">${valid ? '✅ Integrity Verified' : '❌ Integrity Mismatch'}</div>
+        <div class="verify-result-body">
+          <div class="hash-compare-row">
+            <label>Stored Hash (on-chain)</label>
+            <code class="${valid ? 'hash-match' : 'hash-neutral'}">${d.storedHash}</code>
+          </div>
+          <div class="hash-compare-row">
+            <label>Your Hash (computed)</label>
+            <code class="${valid ? 'hash-match' : 'hash-nomatch'}">${d.providedHash}</code>
+          </div>
+          <div style="font-size:.78rem;color:var(--text-muted);">Block #${d.blockIndex} · Verifier: ${user}</div>
+          <div class="mining-badge">⛏ Mined in ${d.miningTime ?? '?'}s · ${(d.attempts ?? 0).toLocaleString()} attempts</div>
+        </div>
       </div>`;
-    loadStats();
-  } catch(e) { status('verStatus','err','❌ Network error: ' + e.message); }
+    refreshStats();
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', 'Network error: ' + e.message); }
+  finally { setLoading('verBtn', false, 'Verify Integrity'); }
 }
 
-// ────────── Version History ──────────
-
+// ── Version History ──
 async function loadVersions() {
   const id = document.getElementById('vhModelId').value.trim();
-  if (!id) return;
+  if (!id) { toast('err', 'Enter a Model ID.'); return; }
   try {
     const res = await fetch(API + '/versions/' + id);
     const d = await res.json();
-    if (!d.success) { document.getElementById('vhResult').innerHTML=`<div class="status show err">❌ ${d.error}</div>`; return; }
-    let h = `<p style="margin:.6rem 0 .3rem;color:var(--text-muted);font-size:.85rem;">Current version: <strong>${d.currentVersion}</strong></p>`;
-    h += '<table class="tbl"><tr><th>#</th><th>Hash</th><th>Changelog</th><th>Block</th></tr>';
+    if (!d.success) { toast('err', d.error); return; }
+    let h = `<p style="margin:.8rem 0;font-size:.88rem;">Current version: <strong>v${d.currentVersion}</strong></p>
+      <table class="tbl"><tr><th>#</th><th>Hash</th><th>Changelog</th><th>Block</th></tr>`;
     d.versions.forEach(v => {
-      h += `<tr><td>${v.version}</td><td><code style="font-family:var(--mono);font-size:.72rem;">${v.hash.substring(0,20)}…</code></td><td>${v.changelog}</td><td>${v.blockIndex||'-'}</td></tr>`;
+      h += `<tr>
+        <td><span class="badge badge-ok">v${v.version}</span></td>
+        <td><code style="font-family:var(--mono);font-size:.72rem;">${v.hash.substring(0,14)}…</code></td>
+        <td>${v.changelog}</td>
+        <td>#${v.blockIndex}</td>
+      </tr>`;
     });
-    h += '</table>';
-    document.getElementById('vhResult').innerHTML = h;
-  } catch(e) { document.getElementById('vhResult').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+    document.getElementById('vhResult').innerHTML = h + '</table>';
+  } catch(e) { toast('err', e.message); }
 }
 
 async function addVersion() {
   const user = getUser(); if (!user) return;
   const modelId = document.getElementById('avModelId').value.trim();
   const hash = hashes.av;
-  const log = document.getElementById('avLog').value.trim();
-  if (!modelId||!hash||!log) { status('avStatus','err','All fields are required.'); return; }
+  const log  = document.getElementById('avLog').value.trim();
+  if (!modelId || !hash || !log) { toast('err', 'All fields are required.'); return; }
 
+  setLoading('avBtn', true, 'Mining block...');
   try {
-    status('avStatus','info','<span class="spinner"></span> Mining block...');
-    const res = await fetch(API + '/add-version', {
+    const res = await apiFetch(API + '/add-version', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelId, newHash:hash, changelog:log, owner:user })
+      body: JSON.stringify({ modelId, newHash:hash, changelog:log })
     });
     const d = await res.json();
+    if (d.success) { toast('ok', `Version ${d.version} added on Block #${d.blockIndex} · ⛏ ${d.miningTime ?? '?'}s · ${(d.attempts ?? 0).toLocaleString()} attempts`); refreshStats(); }
+    else toast('err', d.error);
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', e.message); }
+  finally { setLoading('avBtn', false, 'Add Version'); }
+}
+
+// ── Audit Trail ──
+async function loadAudit() {
+  const id = document.getElementById('auditId').value.trim();
+  if (!id) { toast('err', 'Enter a Model ID.'); return; }
+  try {
+    const res = await fetch(API + '/audit/' + id);
+    const d = await res.json();
+    if (!d.success) { toast('err', d.error); return; }
+    if (d.count === 0) {
+      document.getElementById('exportCsvBtn').style.display = 'none';
+      document.getElementById('auditResult').innerHTML = `
+        <div class="empty-state"><span class="empty-icon">🔍</span><p>No verifications recorded yet.</p></div>`;
+      return;
+    }
+    let h = '<table class="tbl"><tr><th>Verifier</th><th>Result</th><th>Hash Provided</th><th>Block</th><th>Time</th></tr>';
+    d.verifications.forEach(v => {
+      const t = v.timestamp ? new Date(v.timestamp * 1000).toLocaleString() : '—';
+      h += `<tr>
+        <td><strong>${v.verifier}</strong></td>
+        <td>${v.isValid ? '<span class="badge badge-ok">Valid</span>' : '<span class="badge badge-err">Invalid</span>'}</td>
+        <td><code style="font-family:var(--mono);font-size:.72rem;">${v.providedHash ? v.providedHash.substring(0,14)+'…' : '—'}</code></td>
+        <td>#${v.blockIndex || '—'}</td>
+        <td style="font-size:.78rem;color:var(--text-muted);">${t}</td>
+      </tr>`;
+    });
+    document.getElementById('auditResult').innerHTML = h + '</table>';
+    document.getElementById('exportCsvBtn').style.display = 'inline-flex';
+  } catch(e) { toast('err', e.message); }
+}
+
+async function exportAuditCSV() {
+  const id = document.getElementById('auditId').value.trim();
+  if (!id) { toast('err', 'Enter a Model ID first.'); return; }
+  try {
+    const res = await fetch(API + '/audit/' + id + '/export');
+    if (!res.ok) { toast('err', 'Export failed.'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `audit_${id.substring(0,8)}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    toast('ok', 'Audit log downloaded as CSV.');
+  } catch(e) { toast('err', 'Download error: ' + e.message); }
+}
+
+// ── My Models ──
+async function loadMyModels() {
+  const user = getUser(); if (!user) return;
+  document.getElementById('modelSearch').value = '';
+  document.getElementById('modelsResult').innerHTML = `
+    <div style="padding:1rem 0;">
+      <div class="skeleton" style="width:100%;height:80px;border-radius:12px;margin-bottom:.8rem;"></div>
+      <div class="skeleton" style="width:100%;height:80px;border-radius:12px;"></div>
+    </div>`;
+  try {
+    const res = await fetch(API + '/models/' + user);
+    const d = await res.json();
+    _allModels = d.models || [];
+    renderModels(_allModels);
+  } catch(e) { toast('err', e.message); document.getElementById('modelsResult').innerHTML = ''; }
+}
+
+async function filterModels() {
+  const user = document.getElementById('username').value.trim();
+  const q = document.getElementById('modelSearch').value.trim();
+  try {
+    let url = API + '/search?owner=' + encodeURIComponent(user);
+    if (q) url += '&q=' + encodeURIComponent(q);
+    const res = await fetch(url);
+    const d = await res.json();
+    if (!d.success) return;
+    _allModels = d.models;
+    renderModels(d.models, q);
+  } catch(e) {
+    // fallback to client-side filter if API unreachable
+    const filtered = _allModels.filter(m =>
+      m.modelName.toLowerCase().includes(q.toLowerCase()) ||
+      m.modelId.toLowerCase().includes(q.toLowerCase())
+    );
+    renderModels(filtered, q);
+  }
+}
+
+function renderModels(models, query) {
+  const user = document.getElementById('username').value.trim();
+  if (models.length === 0) {
+    const msg = query
+      ? `No models match "<strong>${query}</strong>".`
+      : `No models registered yet under <strong>${user}</strong>.`;
+    document.getElementById('modelsResult').innerHTML = `
+      <div class="empty-state">
+        <span class="empty-icon">📦</span><p>${msg}</p>
+        ${!query ? `<button class="btn" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">Register your first model</button>` : ''}
+      </div>`;
+    return;
+  }
+  let h = `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:.6rem;">${models.length} model${models.length !== 1 ? 's' : ''} found</div>`;
+  h += '<div class="model-grid">';
+  models.forEach(m => {
+    const statusBadge = m.isActive
+      ? '<span class="badge badge-ok">Active</span>'
+      : '<span class="badge badge-err">Deactivated</span>';
+    h += `<div class="model-item">
+      <div class="model-item-name">${m.modelName} ${statusBadge} <span class="badge badge-warn">v${m.currentVersion}</span></div>
+      <div class="model-item-id">
+        <code>${m.modelId}</code>
+        <button class="copy-btn" onclick="copyText('${m.modelId}', this)" style="flex-shrink:0;">Copy ID</button>
+      </div>
+      <div class="model-item-meta">
+        <span>Block #${m.blockIndex}</span>
+        <span>${new Date(m.registeredAt * 1000).toLocaleDateString()}</span>
+      </div>
+      <div class="model-item-actions">
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVerify('${m.modelId}')">Verify</button>
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')">Add Version</button>
+        ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')">Deactivate</button>` : ''}
+      </div>
+    </div>`;
+  });
+  document.getElementById('modelsResult').innerHTML = h + '</div>';
+}
+
+function prefillVerify(modelId) {
+  document.getElementById('verModelId').value = modelId;
+  switchTab('verify', document.querySelectorAll('.tab')[1]);
+}
+function prefillVersion(modelId) {
+  document.getElementById('avModelId').value = modelId;
+  switchTab('versions', document.querySelectorAll('.tab')[2]);
+}
+
+async function deactivateModel(modelId) {
+  const user = getUser(); if (!user) return;
+  if (!confirm('Deactivate this model? It will no longer be verifiable.')) return;
+  try {
+    const res = await apiFetch(API + '/deactivate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ modelId })
+    });
+    const d = await res.json();
+    if (d.success) { toast('ok', 'Model deactivated.'); loadMyModels(); }
+    else toast('err', d.error);
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', e.message); }
+}
+
+// ── Blockchain Explorer ──
+function toggleTxns(btn) {
+  const body = btn.nextElementSibling;
+  const open = body.classList.toggle('open');
+  btn.querySelector('.bc-txns-arrow').textContent = open ? '▲' : '▼';
+}
+
+function renderBlockCard(b) {
+  const isGenesis = b.index === 0;
+  const ts = new Date(b.timestamp * 1000).toLocaleString();
+  const hashShort = b.hash.substring(0, 20) + '…';
+  const prevShort = isGenesis ? '(origin)' : b.previous_hash.substring(0, 16) + '…';
+  return `<div class="block-card${isGenesis ? ' genesis' : ''}" onclick="openBlockModal(${b.index})">
+    <div class="bc-hdr">
+      <div class="bc-index">Block #${b.index}<span class="bc-index-badge">${isGenesis ? 'Genesis' : 'Block'}</span></div>
+      <div class="bc-time">${ts}</div>
+    </div>
+    <div class="bc-body">
+      <div class="bc-field">
+        <div class="bc-field-label">Hash</div>
+        <div class="bc-hash-val">
+          <span title="${b.hash}">${hashShort}</span>
+          <button class="bc-copy" onclick="event.stopPropagation();copyText('${b.hash}', this)" title="Copy full hash">⧉</button>
+        </div>
+      </div>
+      <div class="bc-field">
+        <div class="bc-field-label">Previous Hash</div>
+        <div class="bc-hash-val" style="color:var(--text-muted);">
+          <span title="${b.previous_hash}">${prevShort}</span>
+        </div>
+      </div>
+    </div>
+    <div class="bc-stats">
+      <div class="bc-stat"><div class="bc-stat-val">${b.nonce.toLocaleString()}</div><div class="bc-stat-lbl">Nonce</div></div>
+      <div class="bc-stat"><div class="bc-stat-val">${b.transactions.length}</div><div class="bc-stat-lbl">Transaction${b.transactions.length !== 1 ? 's' : ''}</div></div>
+    </div>
+    <div class="bc-txns">
+      <button class="bc-txns-toggle" onclick="event.stopPropagation();toggleTxns(this)">
+        View Transactions <span class="bc-txns-arrow">▼</span>
+      </button>
+      <div class="bc-txns-body"><pre>${JSON.stringify(b.transactions, null, 2)}</pre></div>
+    </div>
+    <div class="bc-open-hint">🔍 Click to view full details</div>
+  </div>`;
+}
+
+function renderChainPage() {
+  const start = _currentPage * BLOCKS_PER_PAGE;
+  const pageBlocks = _allBlocks.slice(start, start + BLOCKS_PER_PAGE);
+  const totalPages = Math.ceil(_allBlocks.length / BLOCKS_PER_PAGE);
+
+  let h = '<div class="chain-wrapper"><div class="chain-container">';
+  pageBlocks.forEach((b, i) => {
+    h += renderBlockCard(b);
+    if (i < pageBlocks.length - 1) {
+      h += `<div class="chain-connector">
+        <svg viewBox="0 0 60 20" xmlns="http://www.w3.org/2000/svg">
+          <defs><marker id="arr${start+i}" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--primary)"/></marker></defs>
+          <line x1="0" y1="10" x2="54" y2="10" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#arr${start+i})" style="animation:dashAnim 1.2s linear infinite;"/>
+        </svg>
+      </div><style>@keyframes dashAnim{to{stroke-dashoffset:-20;}}</style>`;
+    }
+  });
+  document.getElementById('chainView').innerHTML = h + '</div></div>';
+
+  const pager = document.getElementById('chainPager');
+  if (totalPages > 1) {
+    pager.style.display = 'flex';
+    document.getElementById('pgLabel').textContent = `Page ${_currentPage + 1} of ${totalPages}  ·  ${_allBlocks.length} blocks total`;
+    document.getElementById('pgPrev').disabled = _currentPage === 0;
+    document.getElementById('pgNext').disabled = _currentPage >= totalPages - 1;
+  } else {
+    pager.style.display = 'none';
+  }
+}
+
+function changePage(dir) {
+  const totalPages = Math.ceil(_allBlocks.length / BLOCKS_PER_PAGE);
+  _currentPage = Math.max(0, Math.min(_currentPage + dir, totalPages - 1));
+  renderChainPage();
+  document.getElementById('chainView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function loadChain() {
+  _currentPage = 0;
+  const tr = document.getElementById('tamperResult');
+  tr.innerHTML = ''; tr.style.display = 'none';
+  document.getElementById('chainValid').innerHTML = '';
+  document.getElementById('chainView').innerHTML = `
+    <div style="display:flex;gap:60px;padding:1rem;overflow-x:auto;">
+      <div class="block-card skeleton" style="height:260px;"></div>
+      <div class="block-card skeleton" style="height:260px;opacity:.6;"></div>
+    </div>`;
+  document.getElementById('chainPager').style.display = 'none';
+  try {
+    const res = await fetch(API + '/chain');
+    const d = await res.json();
+    if (!d.success || !d.chain.length) {
+      document.getElementById('chainView').innerHTML = `
+        <div class="empty-state"><span class="empty-icon">🔗</span><p>No blocks yet.</p></div>`;
+      return;
+    }
+    _allBlocks = d.chain;
+    renderChainPage();
+  } catch(e) {
+    toast('err', e.message);
+    document.getElementById('chainView').innerHTML = '';
+  }
+}
+
+async function validateChain() {
+  setLoading('validateBtn', true, 'Validating...');
+  try {
+    const res = await fetch(API + '/chain/validate');
+    const d = await res.json();
+    const el = document.getElementById('chainValid');
+    if (d.isValid) {
+      el.innerHTML = `<div style="background:rgba(0,206,201,0.1);border:1px solid rgba(0,206,201,0.3);border-radius:10px;padding:.8rem 1.1rem;color:var(--success);font-weight:600;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">✅ Blockchain is valid — all blocks pass integrity checks.</div>`;
+    } else {
+      let errHtml = d.errors.map(e => `<li>${e}</li>`).join('');
+      el.innerHTML = `<div style="background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:10px;padding:.8rem 1.1rem;color:var(--danger);font-weight:600;margin-bottom:.5rem;">
+        ❌ Integrity errors detected:<ul style="margin-top:.5rem;padding-left:1.2rem;font-size:.85rem;font-weight:400;">${errHtml}</ul></div>`;
+    }
+  } catch(e) { toast('err', e.message); }
+  finally { setLoading('validateBtn', false, 'Validate Chain Integrity'); }
+}
+
+// ── Tamper Demo ──
+let _tamperRunning = false;
+async function runTamperDemo() {
+  if (_tamperRunning) return;
+  _tamperRunning = true;
+  setLoading('tamperBtn', true, 'Simulating attack...');
+  const el = document.getElementById('tamperResult');
+  el.innerHTML = ''; el.style.display = 'none';
+  try {
+    const res = await fetch(API + '/tamper-demo', { method: 'POST', headers: {'Content-Type':'application/json'} });
+    const d = await res.json();
+    if (!d.success) { toast('err', d.error); return; }
+    const errList = d.tampered.errors.map(e => `<li style="margin:.2rem 0;">${e}</li>`).join('');
+    el.innerHTML = `
+      <div style="border-radius:12px;overflow:hidden;margin-bottom:1rem;border:1px solid rgba(255,107,107,0.4);">
+        <div style="background:rgba(255,107,107,0.12);padding:.8rem 1.1rem;display:flex;align-items:center;gap:.5rem;">
+          <span style="font-size:1.1rem;">🔴</span>
+          <strong style="color:var(--danger);">Step 1 — Tamper Injected into Block #${d.targetBlock}</strong>
+        </div>
+        <div style="padding:.9rem 1.1rem;font-size:.85rem;color:var(--text-muted);">
+          Blockchain validation <strong style="color:var(--danger);">FAILED</strong> — ${d.tampered.errors.length} error(s) detected:
+          <ul style="margin:.5rem 0 0 1rem;padding:0;">${errList}</ul>
+        </div>
+      </div>
+      <div style="border-radius:12px;overflow:hidden;margin-bottom:1rem;border:1px solid rgba(0,206,201,0.4);">
+        <div style="background:rgba(0,206,201,0.1);padding:.8rem 1.1rem;display:flex;align-items:center;gap:.5rem;">
+          <span style="font-size:1.1rem;">🟢</span>
+          <strong style="color:var(--success);">Step 2 — Block Restored to Original State</strong>
+        </div>
+        <div style="padding:.9rem 1.1rem;font-size:.85rem;color:var(--text-muted);">
+          Blockchain validation <strong style="color:var(--success);">PASSED</strong> — all ${d.restored.errors.length === 0 ? 'blocks intact' : 'errors cleared'}.
+        </div>
+      </div>
+      <div style="font-size:.78rem;color:var(--text-muted);text-align:center;margin-bottom:.5rem;">
+        ⚠️ This is a non-destructive simulation — no real data was harmed.
+      </div>`;
+    el.style.display = 'block';
+    toast('ok', 'Tamper demo complete — blockchain caught the attack!');
+  } catch(e) { toast('err', 'Network error: ' + e.message); }
+  finally { setLoading('tamperBtn', false, '⚠️ Simulate Tamper Attack'); _tamperRunning = false; }
+}
+
+// ── Block Details Modal ──
+function openBlockModal(blockIndex) {
+  const b = _allBlocks.find(x => x.index === blockIndex);
+  if (!b) return;
+  const isGenesis = b.index === 0;
+  const ts = new Date(b.timestamp * 1000).toLocaleString();
+
+  const txTypeIcon   = { register: '📝', verify: '✅', genesis: '🌱', add_version: '🔄' };
+  const txTypeLabels = { register: 'Register', verify: 'Verify', genesis: 'Genesis', add_version: 'Add Version' };
+
+  // Pretty-print a single tx field value
+  function fmtVal(k, v) {
+    if (typeof v === 'boolean') return v ? '✅ Yes' : '❌ No';
+    if (typeof v === 'object' && v !== null) return JSON.stringify(v);
+    const s = String(v);
+    if ((k === 'timestamp') && !isNaN(v))
+      return new Date(v * 1000).toLocaleString();
+    if (s.length > 64) return `<span title="${s}" style="cursor:help">${s.substring(0,64)}…</span>`;
+    return s;
+  }
+
+  const txHtml = b.transactions.map(tx => {
+    const type  = tx.type || 'unknown';
+    const icon  = txTypeIcon[type]   || '📄';
+    const label = txTypeLabels[type] || type;
+    // Render pairs directly into one grid — NO nested divs
+    const pairs = Object.entries(tx)
+      .filter(([k]) => k !== 'type')
+      .map(([k, v]) =>
+        `<span class="modal-kv-label">${k}</span><span class="modal-kv-val">${fmtVal(k, v)}</span>`
+      ).join('');
+    return `
+      <div class="modal-tx-item">
+        <div class="modal-tx-type ${type}">${icon} ${label}</div>
+        <div class="modal-kv" style="grid-template-columns:140px 1fr;margin-top:.5rem;">${pairs}</div>
+      </div>`;
+  }).join('');
+
+  const badgeColor = isGenesis ? '#f6d860' : 'var(--primary)';
+  document.getElementById('modalTitle').innerHTML =
+    `🧱 Block #${b.index}
+     <span style="font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:20px;
+       background:rgba(108,92,231,.15);color:${badgeColor};border:1px solid rgba(108,92,231,.3);
+       margin-left:.5rem;vertical-align:middle;">${isGenesis ? 'GENESIS' : 'BLOCK'}</span>`;
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="modal-section">
+      <div class="modal-section-title">Block Info</div>
+      <div class="modal-kv">
+        <span class="modal-kv-label">Index</span>
+        <span class="modal-kv-val" style="color:var(--primary);font-weight:700;">#${b.index}</span>
+        <span class="modal-kv-label">Timestamp</span>
+        <span class="modal-kv-val">${ts}</span>
+        <span class="modal-kv-label">Nonce</span>
+        <span class="modal-kv-val">${b.nonce.toLocaleString()}</span>
+        <span class="modal-kv-label">Transactions</span>
+        <span class="modal-kv-val">${b.transactions.length}</span>
+        ${b.mining_time != null ? `
+        <span class="modal-kv-label">Mining Time</span>
+        <span class="modal-kv-val"><span class="mining-badge" style="margin:0;font-size:.75rem;">⛏ ${b.mining_time}s</span></span>` : ''}
+        ${b.attempts != null ? `
+        <span class="modal-kv-label">Hash Attempts</span>
+        <span class="modal-kv-val">${b.attempts.toLocaleString()}</span>` : ''}
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Hash</div>
+      <div class="modal-hash-row">
+        <code>${b.hash}</code>
+        <button class="copy-btn" onclick="copyText('${b.hash}',this)">Copy</button>
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Previous Hash</div>
+      <div class="modal-hash-row">
+        <code style="color:var(--text-muted)">${isGenesis ? '0000…0000 (genesis origin)' : b.previous_hash}</code>
+        ${!isGenesis ? `<button class="copy-btn" onclick="copyText('${b.previous_hash}',this)">Copy</button>` : ''}
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Transactions (${b.transactions.length})</div>
+      <div class="modal-tx-list">${txHtml || '<p style="color:var(--text-muted);font-size:.85rem;">No transactions</p>'}</div>
+    </div>`;
+
+  document.getElementById('blockModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBlockModal(e) {
+  if (e && e.target !== document.getElementById('blockModal')) return;
+  document.getElementById('blockModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeBlockModal(null);
+});
+
+// ── Theme ──
+function initTheme() {
+  if (localStorage.getItem('blockverify_theme') === 'light') {
+    document.body.classList.add('light-theme');
+    document.getElementById('themeToggle').innerText = '🌙';
+  }
+}
+function toggleTheme() {
+  const body = document.body, btn = document.getElementById('themeToggle');
+  if (body.classList.contains('light-theme')) {
+    body.classList.remove('light-theme'); btn.innerText = '☀️';
+    localStorage.setItem('blockverify_theme', 'dark');
+  } else {
+    body.classList.add('light-theme'); btn.innerText = '🌙';
+    localStorage.setItem('blockverify_theme', 'light');
+  }
+}
+
+// ── Welcome Modal ──
+function showWelcome() {
+  document.getElementById('welcomeModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('welcomeUsername').focus(), 200);
+}
+function closeWelcome() {
+  document.getElementById('welcomeModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function startFromWelcome() {
+  const val = document.getElementById('welcomeUsername').value.trim();
+  if (val) {
+    document.getElementById('username').value = val;
+    localStorage.setItem('blockverify_username', val);
+  }
+  localStorage.setItem('blockverify_visited', '1');
+  closeWelcome();
+  toast('ok', `Welcome${val ? ', ' + val : ''}! Start by registering a model. 👆`);
+}
+
+// ── FAQ Toggle ──
+function toggleFaq(btn) {
+  const answer = btn.nextElementSibling;
+  const isOpen = btn.classList.contains('open');
+  // Close all
+  document.querySelectorAll('.faq-q.open').forEach(q => {
+    q.classList.remove('open');
+    q.nextElementSibling.classList.remove('open');
+  });
+  if (!isOpen) {
+    btn.classList.add('open');
+    answer.classList.add('open');
+  }
+}
+
+// ── Persist username (kept for My Models fetch) ──
+function initUser() {
+  // username now comes from JWT — show auth modal if not logged in
+  if (_authUser) {
+    updateAuthUI();
+  } else {
+    // Small delay so page renders first
+    setTimeout(() => openAuthModal('login'), 400);
+  }
+}
+
+// ── Init ──
+refreshStats();
+initTheme();
+initUser();
+// Show welcome modal only on first ever visit (after login)
+setInterval(refreshStats, 5000);
+</script>
+</body>
+</html>

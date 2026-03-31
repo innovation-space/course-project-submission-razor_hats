@@ -11,17 +11,18 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import app, blockchain, models_registry, verification_logs
+from app import app, blockchain, models_registry, verification_logs, _rate_log
 
 
 # Reset all state before each test so tests don't interfere with each other
 @pytest.fixture(autouse=True)
 def reset_state():
-    """Reset the blockchain and registries before each test."""
+    """Reset the blockchain, registries, and rate-limit log before each test."""
     blockchain.chain = [blockchain._create_genesis_block()]
     blockchain.pending_transactions = []
     models_registry.clear()
     verification_logs.clear()
+    _rate_log.clear()
     yield
 
 
@@ -349,3 +350,151 @@ class TestEdgeCases:
         client.post("/api/add-version", json={"modelId": model_id, "newHash": "v2", "changelog": "v2", "owner": "alice"})
         resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "v3", "changelog": "v3", "owner": "alice"})
         assert resp.get_json()["version"] == 3
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /api/search
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestSearch:
+
+    def test_search_no_params_returns_all(self, client):
+        _register(client, name="Alpha", owner="alice")
+        _register(client, name="Beta", owner="bob")
+        resp = client.get("/api/search")
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["count"] == 2
+
+    def test_search_by_name_substring(self, client):
+        _register(client, name="AlphaModel", owner="alice")
+        _register(client, name="BetaModel", owner="bob")
+        resp = client.get("/api/search?q=alpha")
+        data = resp.get_json()
+        assert data["count"] == 1
+        assert data["models"][0]["modelName"] == "AlphaModel"
+
+    def test_search_case_insensitive(self, client):
+        _register(client, name="AlphaModel", owner="alice")
+        resp = client.get("/api/search?q=ALPHA")
+        assert resp.get_json()["count"] == 1
+
+    def test_search_by_hash(self, client):
+        _register(client, name="M1", hash_val="deadbeef", owner="alice")
+        _register(client, name="M2", hash_val="cafebabe", owner="alice")
+        resp = client.get("/api/search?q=deadbeef")
+        assert resp.get_json()["count"] == 1
+
+    def test_search_by_owner_filter(self, client):
+        _register(client, name="M1", owner="alice")
+        _register(client, name="M2", owner="alice")
+        _register(client, name="M3", owner="bob")
+        resp = client.get("/api/search?owner=alice")
+        data = resp.get_json()
+        assert data["count"] == 2
+
+    def test_search_combined_q_and_owner(self, client):
+        _register(client, name="AlphaModel", owner="alice")
+        _register(client, name="AlphaModel", owner="bob")
+        resp = client.get("/api/search?q=alpha&owner=alice")
+        data = resp.get_json()
+        assert data["count"] == 1
+        assert data["models"][0]["owner"] == "alice"
+
+    def test_search_no_match(self, client):
+        _register(client, name="TestModel", owner="alice")
+        resp = client.get("/api/search?q=zzznomatch")
+        assert resp.get_json()["count"] == 0
+
+    def test_search_empty_registry(self, client):
+        resp = client.get("/api/search")
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["count"] == 0
+
+    def test_search_returns_mining_metrics(self, client):
+        _register(client, name="M", owner="alice")
+        data = client.get("/api/search").get_json()
+        assert "modelId" in data["models"][0]
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  /api/tamper-demo
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestTamperDemo:
+
+    def test_tamper_demo_requires_two_blocks(self, client):
+        # Genesis-only chain should be rejected
+        resp = client.post("/api/tamper-demo")
+        assert resp.status_code == 400
+        assert resp.get_json()["success"] is False
+
+    def test_tamper_demo_success(self, client):
+        _register(client)  # mines block 1
+        resp = client.post("/api/tamper-demo")
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data["success"] is True
+
+    def test_tamper_demo_detects_attack(self, client):
+        _register(client)
+        data = client.post("/api/tamper-demo").get_json()
+        assert data["tampered"]["isValid"] is False
+        assert len(data["tampered"]["errors"]) > 0
+
+    def test_tamper_demo_restores_chain(self, client):
+        _register(client)
+        data = client.post("/api/tamper-demo").get_json()
+        assert data["restored"]["isValid"] is True
+        assert data["restored"]["errors"] == []
+
+    def test_tamper_demo_chain_still_valid_after(self, client):
+        # Running the demo must leave the real chain intact
+        _register(client)
+        client.post("/api/tamper-demo")
+        result = client.get("/api/chain/validate").get_json()
+        assert result["isValid"] is True
+
+    def test_tamper_demo_response_fields(self, client):
+        _register(client)
+        data = client.post("/api/tamper-demo").get_json()
+        assert "targetBlock" in data
+        assert "tampered" in data
+        assert "restored" in data
+        assert data["targetBlock"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Mining metrics in responses
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestMiningMetrics:
+
+    def test_register_returns_mining_time(self, client):
+        data = _register(client).get_json()
+        assert "miningTime" in data
+        assert isinstance(data["miningTime"], (int, float))
+
+    def test_register_returns_attempts(self, client):
+        data = _register(client).get_json()
+        assert "attempts" in data
+        assert isinstance(data["attempts"], int)
+        assert data["attempts"] >= 1
+
+    def test_verify_returns_mining_metrics(self, client):
+        model_id = _register(client).get_json()["modelId"]
+        data = client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123"}).get_json()
+        assert "miningTime" in data
+        assert "attempts" in data
+
+    def test_add_version_returns_mining_metrics(self, client):
+        model_id = _register(client, owner="alice").get_json()["modelId"]
+        data = client.post("/api/add-version", json={
+            "modelId": model_id, "newHash": "v2", "changelog": "c", "owner": "alice"
+        }).get_json()
+        assert "miningTime" in data
+        assert "attempts" in data
