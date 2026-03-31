@@ -411,6 +411,49 @@ def get_audit_log(model_id):
     return jsonify({"success": True, "verifications": logs, "count": len(logs)}), 200
 
 
+@app.route("/api/audit/<model_id>/export", methods=["GET"])
+def export_audit_csv(model_id):
+    """
+    Export the audit trail for a model as a downloadable CSV file.
+
+    Columns: modelId, verifier, result, providedHash, blockIndex, timestamp
+    """
+    import csv, io
+    from datetime import datetime
+    from flask import Response
+
+    if model_id not in verification_logs:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+
+    logs = verification_logs[model_id]
+    model_name = models_registry.get(model_id, {}).get("modelName", model_id)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["modelId", "modelName", "verifier", "result", "providedHash", "blockIndex", "timestamp"])
+    for entry in logs:
+        ts = entry.get("timestamp", "")
+        if ts:
+            ts = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
+        writer.writerow([
+            model_id,
+            model_name,
+            entry.get("verifier", "anonymous"),
+            "VALID" if entry.get("isValid") else "INVALID",
+            entry.get("providedHash", ""),
+            entry.get("blockIndex", ""),
+            ts,
+        ])
+
+    csv_data = output.getvalue()
+    filename = f"audit_{model_id[:8]}.csv"
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @app.route("/api/chain", methods=["GET"])
 def get_chain():
     """Return the entire blockchain."""
