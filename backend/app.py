@@ -699,7 +699,7 @@ def public_registry():
 def download_report(model_id):
     """
     Generate and stream a PDF integrity report for a model.
-    Includes: model metadata, hash, all version history, and full audit trail.
+    Uses fpdf2 v2.7+ API (new_x/new_y instead of ln=True, border as string).
     """
     from fpdf import FPDF
     from datetime import datetime, timezone
@@ -713,8 +713,14 @@ def download_report(model_id):
 
     def fmt_ts(ts):
         if not ts:
-            return "—"
+            return "-"
         return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    # ── safe ASCII-only text (fpdf2 core fonts don't support Unicode) ──
+    def safe(text):
+        if not text:
+            return "-"
+        return str(text).encode("latin-1", errors="replace").decode("latin-1")
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -726,11 +732,13 @@ def download_report(model_id):
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(200, 180, 255)
     pdf.set_y(7)
-    pdf.cell(0, 10, "BlockVerify — AI Model Integrity Report", align="C")
+    pdf.cell(0, 10, "BlockVerify - AI Model Integrity Report", align="C",
+             new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(160, 140, 220)
     pdf.set_y(18)
-    pdf.cell(0, 6, f"Generated: {fmt_ts(datetime.now(timezone.utc).timestamp())}   |   blockverify.app", align="C")
+    pdf.cell(0, 6, f"Generated: {fmt_ts(datetime.now(timezone.utc).timestamp())}   |   blockverify.app",
+             align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_y(32)
     pdf.set_text_color(30, 20, 60)
 
@@ -738,32 +746,32 @@ def download_report(model_id):
         pdf.set_fill_color(240, 237, 255)
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_text_color(60, 40, 120)
-        pdf.cell(0, 8, f"  {title}", ln=True, fill=True)
+        pdf.cell(0, 8, f"  {safe(title)}", fill=True,
+                 new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(20, 20, 40)
         pdf.ln(2)
 
     def kv(label, value, mono=False):
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(100, 80, 160)
-        pdf.cell(45, 6, label + ":", ln=False)
+        pdf.cell(45, 6, safe(label) + ":", new_x="RIGHT", new_y="TOP")
         pdf.set_font("Courier" if mono else "Helvetica", "", 9)
         pdf.set_text_color(20, 20, 40)
-        # Multi-cell for long values
-        x = pdf.get_x(); y = pdf.get_y()
-        pdf.multi_cell(0, 6, str(value) if value else "—")
+        pdf.multi_cell(0, 6, safe(str(value) if value else "-"),
+                       new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
 
     # ── Model Overview ─────────────────────────────────────────────────
     section("Model Overview")
-    kv("Model Name",   model.get("modelName", "—"))
-    kv("Model ID",     model.get("modelId", "—"),  mono=True)
-    kv("Owner",        model.get("owner", "—"))
-    kv("Status",       "Active" if model.get("isActive") else "Deactivated")
+    kv("Model Name",    model.get("modelName", "-"))
+    kv("Model ID",      model.get("modelId", "-"), mono=True)
+    kv("Owner",         model.get("owner", "-"))
+    kv("Status",        "Active" if model.get("isActive") else "Deactivated")
     kv("Registered At", fmt_ts(model.get("registeredAt")))
-    kv("Block #",      str(model.get("blockIndex", "—")))
-    kv("Version",      f"v{model.get('currentVersion', 1)}")
+    kv("Block #",       str(model.get("blockIndex", "-")))
+    kv("Version",       f"v{model.get('currentVersion', 1)}")
     if model.get("metadata"):
-        kv("Metadata", model["metadata"])
+        kv("Metadata",  model["metadata"])
     pdf.ln(4)
 
     # ── Hash ──────────────────────────────────────────────────────────
@@ -771,7 +779,8 @@ def download_report(model_id):
     pdf.set_font("Courier", "", 8.5)
     pdf.set_fill_color(248, 246, 255)
     pdf.set_text_color(40, 20, 100)
-    pdf.multi_cell(0, 7, model.get("modelHash", "—"), fill=True, border=1)
+    pdf.multi_cell(0, 7, safe(model.get("modelHash", "-")),
+                   border="1", fill=True, new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(20, 20, 40)
     pdf.ln(4)
 
@@ -780,15 +789,20 @@ def download_report(model_id):
     for v in model.get("versions", []):
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(60, 40, 120)
-        pdf.cell(0, 6, f"  v{v.get('version')}  —  {fmt_ts(v.get('timestamp'))}  —  Block #{v.get('blockIndex', '?')}", ln=True)
+        pdf.cell(0, 6,
+                 f"  v{v.get('version')}  -  {fmt_ts(v.get('timestamp'))}  -  Block #{v.get('blockIndex', '?')}",
+                 new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "I", 8.5)
         pdf.set_text_color(80, 80, 80)
-        pdf.cell(45, 5, "")
-        pdf.cell(0, 5, v.get("changelog", "—"), ln=True)
+        pdf.cell(45, 5, "", new_x="RIGHT", new_y="TOP")
+        pdf.cell(0, 5, safe(v.get("changelog", "-")),
+                 new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Courier", "", 8)
         pdf.set_text_color(100, 80, 160)
-        pdf.cell(45, 5, "")
-        pdf.cell(0, 5, v.get("hash", "")[:64] + ("…" if len(v.get("hash", "")) > 64 else ""), ln=True)
+        pdf.cell(45, 5, "", new_x="RIGHT", new_y="TOP")
+        h_str = v.get("hash", "")
+        display_h = h_str[:64] + ("..." if len(h_str) > 64 else "")
+        pdf.cell(0, 5, safe(display_h), new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(20, 20, 40)
         pdf.ln(1)
     pdf.ln(4)
@@ -798,36 +812,53 @@ def download_report(model_id):
     if not logs:
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(120, 120, 120)
-        pdf.cell(0, 6, "  No verifications recorded yet.", ln=True)
+        pdf.cell(0, 6, "  No verifications recorded yet.",
+                 new_x="LMARGIN", new_y="NEXT")
     else:
         # Table header
         pdf.set_fill_color(220, 210, 255)
         pdf.set_font("Helvetica", "B", 8.5)
         pdf.set_text_color(40, 20, 100)
-        pdf.cell(30, 7, "Verifier",   fill=True, border=1)
-        pdf.cell(18, 7, "Result",     fill=True, border=1)
-        pdf.cell(50, 7, "Timestamp",  fill=True, border=1)
-        pdf.cell(0,  7, "Hash (provided, first 32 chars)", fill=True, border=1, ln=True)
+        pdf.cell(30, 7, "Verifier",  fill=True, border="1", new_x="RIGHT", new_y="TOP")
+        pdf.cell(18, 7, "Result",    fill=True, border="1", new_x="RIGHT", new_y="TOP")
+        pdf.cell(50, 7, "Timestamp", fill=True, border="1", new_x="RIGHT", new_y="TOP")
+        pdf.cell(0,  7, "Hash (first 32 chars)", fill=True, border="1",
+                 new_x="LMARGIN", new_y="NEXT")
 
         pdf.set_font("Courier", "", 8)
         for i, entry in enumerate(logs):
-            fill = i % 2 == 0
-            pdf.set_fill_color(248, 246, 255 if fill else 255)
+            even = i % 2 == 0
+            if even:
+                pdf.set_fill_color(248, 246, 255)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+
             result = "VALID" if entry.get("isValid") else "INVALID"
-            pdf.set_text_color(0, 140, 80) if result == "VALID" else pdf.set_text_color(180, 30, 30)
-            pdf.cell(30, 6, entry.get("verifier", "anon")[:18], fill=fill, border=1)
-            pdf.cell(18, 6, result, fill=fill, border=1)
+            if result == "VALID":
+                pdf.set_text_color(0, 140, 80)
+            else:
+                pdf.set_text_color(180, 30, 30)
+
+            pdf.cell(30, 6, safe(entry.get("verifier", "anon"))[:18],
+                     fill=True, border="1", new_x="RIGHT", new_y="TOP")
+            pdf.cell(18, 6, result,
+                     fill=True, border="1", new_x="RIGHT", new_y="TOP")
             pdf.set_text_color(20, 20, 40)
-            pdf.cell(50, 6, fmt_ts(entry.get("timestamp")), fill=fill, border=1)
-            h = entry.get("providedHash", "—")
-            pdf.cell(0,  6, (h[:32] + "…") if len(h) > 32 else h, fill=fill, border=1, ln=True)
+            pdf.cell(50, 6, fmt_ts(entry.get("timestamp")),
+                     fill=True, border="1", new_x="RIGHT", new_y="TOP")
+            h_val = entry.get("providedHash", "-")
+            display = (h_val[:32] + "...") if len(h_val) > 32 else h_val
+            pdf.cell(0, 6, safe(display),
+                     fill=True, border="1", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
     # ── Footer ────────────────────────────────────────────────────────
     pdf.set_fill_color(30, 20, 60)
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(180, 160, 240)
-    pdf.cell(0, 7, "This report is auto-generated by BlockVerify — a custom Proof-of-Work blockchain system.", align="C", fill=True)
+    pdf.cell(0, 7,
+             "This report is auto-generated by BlockVerify - a custom Proof-of-Work blockchain system.",
+             align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
 
     pdf_bytes = pdf.output()
     filename  = f"blockverify_report_{model_id[:8]}.pdf"
@@ -840,7 +871,9 @@ def download_report(model_id):
 
 
 
-# ------------------------------------------------------------------ #
+
+
+
 #  Server start                                                        #
 # ------------------------------------------------------------------ #
 
