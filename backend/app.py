@@ -90,6 +90,38 @@ verification_logs = {}      # modelId  → [verification records]
 # Load saved state on startup
 load_state()
 
+# ------------------------------------------------------------------ #
+#  Rate limiter                                                        #
+# ------------------------------------------------------------------ #
+
+# Tracks recent write timestamps per owner: { owner: [t1, t2, ...] }
+_rate_log: dict = {}
+
+RATE_LIMIT      = 10    # max requests
+RATE_WINDOW_SEC = 60    # per this many seconds
+
+
+def check_rate_limit(owner: str) -> tuple[bool, str]:
+    """
+    Return (allowed, error_message).
+    Sliding-window rate limiter: at most RATE_LIMIT write operations
+    per owner within RATE_WINDOW_SEC seconds.
+    """
+    now = time()
+    timestamps = _rate_log.get(owner, [])
+    # Drop timestamps outside the window
+    timestamps = [t for t in timestamps if now - t < RATE_WINDOW_SEC]
+    if len(timestamps) >= RATE_LIMIT:
+        wait = int(RATE_WINDOW_SEC - (now - timestamps[0]))
+        _rate_log[owner] = timestamps
+        return False, (
+            f"Rate limit exceeded: max {RATE_LIMIT} operations per "
+            f"{RATE_WINDOW_SEC}s. Try again in {wait}s."
+        )
+    timestamps.append(now)
+    _rate_log[owner] = timestamps
+    return True, ""
+
 
 # ------------------------------------------------------------------ #
 #  Helpers                                                             #
@@ -117,6 +149,10 @@ def register_model():
             return jsonify({"success": False, "error": "Model hash is required"}), 400
         if not data.get("owner"):
             return jsonify({"success": False, "error": "Owner is required"}), 400
+
+        allowed, err = check_rate_limit(data["owner"])
+        if not allowed:
+            return jsonify({"success": False, "error": err}), 429
 
         model_id = generate_model_id(
             data["modelName"], data["modelHash"], data["owner"]
@@ -184,6 +220,11 @@ def verify_model():
         if not data.get("providedHash"):
             return jsonify({"success": False, "error": "Hash is required"}), 400
 
+        verifier = data.get("verifier", "anonymous")
+        allowed, err = check_rate_limit(verifier)
+        if not allowed:
+            return jsonify({"success": False, "error": err}), 429
+
         model = models_registry.get(data["modelId"])
         if not model:
             return jsonify({"success": False, "error": "Model not found"}), 404
@@ -249,6 +290,10 @@ def add_version():
             return jsonify({"success": False, "error": "Changelog is required"}), 400
         if not data.get("owner"):
             return jsonify({"success": False, "error": "Owner is required"}), 400
+
+        allowed, err = check_rate_limit(data["owner"])
+        if not allowed:
+            return jsonify({"success": False, "error": err}), 429
 
         model = models_registry.get(data["modelId"])
         if not model:
@@ -463,6 +508,27 @@ def tamper_demo():
             "errors": restored_result["errors"],
         },
         "message": "Tamper simulation complete — blockchain detected the attack and was restored.",
+    }), 200
+
+
+@app.route("/api/rate-limit-status", methods=["GET"])
+def rate_limit_status():
+    """Return remaining write quota for a given owner within the current window."""
+    owner = request.args.get("owner", "").strip()
+    if not owner:
+        return jsonify({"success": False, "error": "owner param required"}), 400
+    now = time()
+    timestamps = _rate_log.get(owner, [])
+    timestamps = [t for t in timestamps if now - t < RATE_WINDOW_SEC]
+    used = len(timestamps)
+    remaining = max(0, RATE_LIMIT - used)
+    return jsonify({
+        "success": True,
+        "owner": owner,
+        "limit": RATE_LIMIT,
+        "windowSeconds": RATE_WINDOW_SEC,
+        "used": used,
+        "remaining": remaining,
     }), 200
 
 
