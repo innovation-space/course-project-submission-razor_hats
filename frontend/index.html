@@ -218,6 +218,14 @@
     .model-id-box .id-row { display: flex; align-items: center; gap: .5rem; }
     .model-id-box code { font-family: var(--mono); font-size: .9rem; color: var(--text); flex: 1; word-break: break-all; }
 
+    /* ── Mining badge ── */
+    .mining-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      margin-top: .6rem; padding: .3rem .7rem; border-radius: 20px;
+      background: rgba(254,202,87,0.1); border: 1px solid rgba(254,202,87,0.3);
+      color: var(--warn); font-size: .78rem; font-weight: 600; font-family: var(--mono);
+    }
+
     /* ── Empty state ── */
     .empty-state { text-align: center; padding: 3rem 2rem; color: var(--text-muted); }
     .empty-state .empty-icon { font-size: 3.5rem; margin-bottom: 1rem; display: block; opacity: .6; }
@@ -650,6 +658,7 @@ async function registerModel() {
             <button class="copy-btn" onclick="copyText('${d.modelId}', this)">Copy ID</button>
           </div>
           <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Block #${d.blockIndex} · Owner: ${user}</div>
+          <div class="mining-badge">⛏ Mined in ${d.miningTime}s · ${d.attempts.toLocaleString()} attempts</div>
         </div>`;
       toast('ok', `Model "${name}" registered on Block #${d.blockIndex}`);
       document.getElementById('regName').value = '';
@@ -694,6 +703,7 @@ async function verifyModel() {
             <code class="${valid ? 'hash-match' : 'hash-nomatch'}">${d.providedHash}</code>
           </div>
           <div style="font-size:.78rem;color:var(--text-muted);">Block #${d.blockIndex} · Verifier: ${user}</div>
+          <div class="mining-badge">⛏ Mined in ${d.miningTime}s · ${d.attempts.toLocaleString()} attempts</div>
         </div>
       </div>`;
     refreshStats();
@@ -737,7 +747,7 @@ async function addVersion() {
       body: JSON.stringify({ modelId, newHash:hash, changelog:log, owner:user })
     });
     const d = await res.json();
-    if (d.success) { toast('ok', `Version ${d.version} added on Block #${d.blockIndex}`); refreshStats(); }
+    if (d.success) { toast('ok', `Version ${d.version} added on Block #${d.blockIndex} · ⛏ ${d.miningTime}s · ${d.attempts.toLocaleString()} attempts`); refreshStats(); }
     else toast('err', d.error);
   } catch(e) { toast('err', e.message); }
   finally { setLoading('avBtn', false, 'Add Version'); }
@@ -788,12 +798,25 @@ async function loadMyModels() {
   } catch(e) { toast('err', e.message); document.getElementById('modelsResult').innerHTML = ''; }
 }
 
-function filterModels() {
-  const q = document.getElementById('modelSearch').value.toLowerCase();
-  const filtered = _allModels.filter(m =>
-    m.modelName.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q)
-  );
-  renderModels(filtered, q);
+async function filterModels() {
+  const user = document.getElementById('username').value.trim();
+  const q = document.getElementById('modelSearch').value.trim();
+  try {
+    let url = API + '/search?owner=' + encodeURIComponent(user);
+    if (q) url += '&q=' + encodeURIComponent(q);
+    const res = await fetch(url);
+    const d = await res.json();
+    if (!d.success) return;
+    _allModels = d.models;
+    renderModels(d.models, q);
+  } catch(e) {
+    // fallback to client-side filter if API unreachable
+    const filtered = _allModels.filter(m =>
+      m.modelName.toLowerCase().includes(q.toLowerCase()) ||
+      m.modelId.toLowerCase().includes(q.toLowerCase())
+    );
+    renderModels(filtered, q);
+  }
 }
 
 function renderModels(models, query) {
