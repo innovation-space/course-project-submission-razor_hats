@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BlockVerify — AI Model Integrity Verification</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -573,6 +574,24 @@
     <div class="stat-card"><div class="stat-val" id="sBlocks">—</div><div class="stat-lbl">Blockchain Blocks</div></div>
   </div>
 
+  <!-- Activity Chart -->
+  <div class="card" style="margin-bottom:1.5rem;padding:1.4rem 1.8rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+      <div>
+        <div style="font-size:1rem;font-weight:700;">📊 Platform Activity</div>
+        <div style="font-size:.8rem;color:var(--text-muted);">Daily registrations &amp; verifications</div>
+      </div>
+      <div style="display:flex;gap:.4rem;">
+        <button onclick="loadActivityChart(7)"  class="btn btn-sec" id="actBtn7"  style="padding:.3rem .75rem;font-size:.8rem;">7d</button>
+        <button onclick="loadActivityChart(14)" class="btn"        id="actBtn14" style="padding:.3rem .75rem;font-size:.8rem;">14d</button>
+        <button onclick="loadActivityChart(30)" class="btn btn-sec" id="actBtn30" style="padding:.3rem .75rem;font-size:.8rem;">30d</button>
+      </div>
+    </div>
+    <div style="position:relative;height:180px;">
+      <canvas id="activityChart"></canvas>
+    </div>
+  </div>
+
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab active"  onclick="switchTab('register',this)">📝 Register</button>
@@ -580,6 +599,7 @@
     <button class="tab"         onclick="switchTab('versions',this)">📋 Versions</button>
     <button class="tab"         onclick="switchTab('audit',this)">🔍 Audit Trail</button>
     <button class="tab"         onclick="switchTab('models',this)">📦 My Models</button>
+    <button class="tab"         onclick="switchTab('registry',this)">🌐 Registry</button>
     <button class="tab"         onclick="switchTab('explorer',this)">🔗 Explorer</button>
     <button class="tab"         onclick="switchTab('help',this)">❓ Help</button>
   </div>
@@ -686,6 +706,24 @@
         <input type="text" id="modelSearch" placeholder="Search by name or ID…" oninput="filterModels()" style="flex:1;min-width:180px;max-width:320px;" />
       </div>
       <div id="modelsResult" style="margin-top:.75rem;"></div>
+    </div>
+  </div>
+
+  <!-- Public Registry -->
+  <div class="tab-content" id="tab-registry">
+    <div class="card">
+      <h2>🌐 Public Model Registry</h2>
+      <p class="subtitle">All AI models registered on the blockchain — the public immutable ledger.</p>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.8rem;">
+        <input type="text" id="registrySearch" placeholder="Search by name, ID, or owner…" oninput="searchRegistry()" style="flex:1;min-width:200px;max-width:380px;" />
+        <button class="btn btn-sec" onclick="loadRegistry()">Refresh</button>
+      </div>
+      <div id="registryResult"></div>
+      <div id="registryPager" style="display:none;margin-top:1rem;align-items:center;justify-content:center;gap:.7rem;">
+        <button class="btn btn-sec" id="regPgPrev" onclick="changeRegistryPage(-1)" style="padding:.4rem .9rem;">← Prev</button>
+        <span id="regPgLabel" style="font-size:.85rem;color:var(--text-muted);"></span>
+        <button class="btn btn-sec" id="regPgNext" onclick="changeRegistryPage(1)"  style="padding:.4rem .9rem;">Next →</button>
+      </div>
     </div>
   </div>
 
@@ -1096,6 +1134,7 @@ function switchTab(name, btn) {
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'explorer') loadChain();
   if (name === 'models')   loadMyModels();
+  if (name === 'registry') loadRegistry();
 }
 
 // ── SHA-256 ──
@@ -1366,7 +1405,7 @@ async function loadMyModels() {
 }
 
 async function filterModels() {
-  const user = document.getElementById('username').value.trim();
+  const user = _authUser || '';
   const q = document.getElementById('modelSearch').value.trim();
   try {
     let url = API + '/search?owner=' + encodeURIComponent(user);
@@ -1387,7 +1426,7 @@ async function filterModels() {
 }
 
 function renderModels(models, query) {
-  const user = document.getElementById('username').value.trim();
+  const user = _authUser || '';
   if (models.length === 0) {
     const msg = query
       ? `No models match "<strong>${query}</strong>".`
@@ -1418,6 +1457,7 @@ function renderModels(models, query) {
       <div class="model-item-actions">
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVerify('${m.modelId}')">Verify</button>
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')">Add Version</button>
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(108,92,231,0.2),rgba(0,206,201,0.15));border-color:rgba(108,92,231,0.4);" onclick="downloadReport('${m.modelId}','${m.modelName.replace(/'/g,'')}')">📄 PDF Report</button>
         ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')">Deactivate</button>` : ''}
       </div>
     </div>`;
@@ -1745,10 +1785,7 @@ function closeWelcome() {
 }
 function startFromWelcome() {
   const val = document.getElementById('welcomeUsername').value.trim();
-  if (val) {
-    document.getElementById('username').value = val;
-    localStorage.setItem('blockverify_username', val);
-  }
+  // With JWT auth, username is set via login/register — just close the welcome modal
   localStorage.setItem('blockverify_visited', '1');
   closeWelcome();
   toast('ok', `Welcome${val ? ', ' + val : ''}! Start by registering a model. 👆`);
@@ -1780,12 +1817,200 @@ function initUser() {
   }
 }
 
+// ═══════════════════════════════════════════════════════
+//  📊  ACTIVITY CHART
+// ═══════════════════════════════════════════════════════
+let _chartInstance = null;
+let _activeDays = 14;
+
+async function loadActivityChart(days = 14) {
+  _activeDays = days;
+  // Update active button style
+  [7,14,30].forEach(d => {
+    const b = document.getElementById('actBtn' + d);
+    if (!b) return;
+    b.className = d === days ? 'btn' : 'btn btn-sec';
+    b.style.cssText = 'padding:.3rem .75rem;font-size:.8rem;';
+  });
+  try {
+    const res = await fetch(API + '/stats/activity?days=' + days);
+    const d = await res.json();
+    if (!d.success) return;
+
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+
+    const isDark = !document.body.classList.contains('light-theme');
+    const gridColor  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const labelColor = isDark ? '#8e9bb0' : '#64748b';
+
+    _chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: d.labels,
+        datasets: [
+          {
+            label: 'Registrations',
+            data: d.registrations,
+            backgroundColor: 'rgba(108,92,231,0.7)',
+            borderColor: 'rgba(108,92,231,1)',
+            borderWidth: 1.5,
+            borderRadius: 5,
+          },
+          {
+            label: 'Verifications',
+            data: d.verifications,
+            backgroundColor: 'rgba(0,206,201,0.55)',
+            borderColor: 'rgba(0,206,201,1)',
+            borderWidth: 1.5,
+            borderRadius: 5,
+            type: 'line',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: labelColor, font: { size: 12 }, boxWidth: 14 } },
+          tooltip: {
+            backgroundColor: isDark ? 'rgba(15,20,32,0.95)' : 'rgba(255,255,255,0.96)',
+            titleColor: isDark ? '#e8eaf0' : '#1e293b',
+            bodyColor:  isDark ? '#8e9bb0' : '#64748b',
+            borderColor: 'rgba(108,92,231,0.4)',
+            borderWidth: 1,
+            padding: 10,
+          },
+        },
+        scales: {
+          x: { ticks: { color: labelColor, font: { size: 10 }, maxRotation: 45 }, grid: { color: gridColor } },
+          y: { ticks: { color: labelColor, stepSize: 1, precision: 0 }, grid: { color: gridColor }, beginAtZero: true },
+        },
+      },
+    });
+  } catch(e) { /* chart is optional — silently ignore network errors */ }
+}
+
+// ═══════════════════════════════════════════════════════
+//  🌐  PUBLIC REGISTRY
+// ═══════════════════════════════════════════════════════
+let _regPage = 1;
+let _regPages = 1;
+
+async function loadRegistry(page = 1) {
+  _regPage = page;
+  const q = (document.getElementById('registrySearch')?.value || '').trim();
+  document.getElementById('registryResult').innerHTML = `
+    <div style="padding:1rem 0;">
+      <div class="skeleton" style="width:100%;height:60px;border-radius:10px;margin-bottom:.6rem;"></div>
+      <div class="skeleton" style="width:100%;height:60px;border-radius:10px;margin-bottom:.6rem;"></div>
+      <div class="skeleton" style="width:100%;height:60px;border-radius:10px;"></div>
+    </div>`;
+  try {
+    let url = `${API}/registry?page=${page}&limit=10`;
+    if (q) url += '&q=' + encodeURIComponent(q);
+    const res = await fetch(url);
+    const d = await res.json();
+    if (!d.success) { toast('err', d.error); return; }
+    _regPages = d.pages;
+    renderRegistry(d.models, d.total, d.page, d.pages);
+  } catch(e) { toast('err', 'Could not load registry: ' + e.message); }
+}
+
+let _regSearchTimer = null;
+function searchRegistry() {
+  clearTimeout(_regSearchTimer);
+  _regSearchTimer = setTimeout(() => loadRegistry(1), 350);
+}
+
+function changeRegistryPage(dir) {
+  const next = _regPage + dir;
+  if (next < 1 || next > _regPages) return;
+  loadRegistry(next);
+}
+
+function renderRegistry(models, total, page, pages) {
+  const pager = document.getElementById('registryPager');
+  const prev  = document.getElementById('regPgPrev');
+  const next  = document.getElementById('regPgNext');
+  const lbl   = document.getElementById('regPgLabel');
+
+  if (pages > 1) {
+    pager.style.display = 'flex';
+    lbl.textContent = `Page ${page} of ${pages} (${total} model${total !== 1 ? 's' : ''})`;
+    prev.disabled = page <= 1;
+    next.disabled = page >= pages;
+  } else {
+    pager.style.display = 'none';
+  }
+
+  if (models.length === 0) {
+    document.getElementById('registryResult').innerHTML = `
+      <div class="empty-state">
+        <span class="empty-icon">🌐</span>
+        <p>No models registered yet. Be the first!</p>
+        <button class="btn" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">Register a Model</button>
+      </div>`;
+    return;
+  }
+
+  const fmt = ts => ts ? new Date(ts * 1000).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'}) : '—';
+
+  let h = `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:.8rem;">${total} model${total!==1?'s':''} on the public ledger</div>`;
+  h += '<div style="display:flex;flex-direction:column;gap:.55rem;">';
+  models.forEach(m => {
+    const status = m.isActive
+      ? '<span class="badge badge-ok">Active</span>'
+      : '<span class="badge badge-err">Inactive</span>';
+    h += `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.2rem;display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-start;transition:border-color .2s;" onmouseover="this.style.borderColor='rgba(108,92,231,0.4)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="flex:1;min-width:180px;">
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:.3rem;">${m.modelName} ${status} <span class="badge badge-warn">v${m.currentVersion}</span></div>
+          <div style="font-size:.78rem;color:var(--text-muted);display:flex;gap:.8rem;flex-wrap:wrap;">
+            <span>🔑 <code style="font-size:.75rem;">${m.modelId}</code></span>
+            <span>👤 ${m.owner}</span>
+            <span>⛓ Block #${m.blockIndex}</span>
+            <span>📅 ${fmt(m.registeredAt)}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-shrink:0;align-items:center;">
+          <button class="btn btn-sec" style="font-size:.78rem;padding:.35rem .8rem;" onclick="copyText('${m.modelId}',this)">Copy ID</button>
+          <button class="btn btn-sec" style="font-size:.78rem;padding:.35rem .8rem;background:linear-gradient(135deg,rgba(108,92,231,0.18),rgba(0,206,201,0.12));border-color:rgba(108,92,231,0.35);" onclick="downloadReport('${m.modelId}','${m.modelName.replace(/'/g,'')}')">📄 PDF</button>
+        </div>
+      </div>`;
+  });
+  h += '</div>';
+  document.getElementById('registryResult').innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════════
+//  📄  PDF REPORT DOWNLOAD
+// ═══════════════════════════════════════════════════════
+function downloadReport(modelId, modelName) {
+  toast('info', `Generating PDF for "${modelName || modelId}"…`, 2000);
+  // Direct browser download — backend streams the PDF
+  const url = `${API}/report/${encodeURIComponent(modelId)}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `blockverify_report_${modelId.slice(0,8)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // ── Init ──
 refreshStats();
 initTheme();
 initUser();
+loadActivityChart(14);
 // Show welcome modal only on first ever visit (after login)
 setInterval(refreshStats, 5000);
+
 </script>
 </body>
 </html>

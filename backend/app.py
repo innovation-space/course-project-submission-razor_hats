@@ -605,6 +605,241 @@ def get_stats():
     ), 200
 
 
+@app.route("/api/stats/activity", methods=["GET"])
+def get_activity():
+    """
+    Return daily registration and verification counts for the last N days.
+    Query param: days (int, default 14, max 30)
+    """
+    from datetime import datetime, timezone, timedelta
+
+    days = min(int(request.args.get("days", 14)), 30)
+    now  = datetime.now(timezone.utc)
+
+    # Build a dict of date_str → {registrations, verifications}
+    buckets = {}
+    for i in range(days - 1, -1, -1):
+        d = (now - timedelta(days=i)).strftime("%b %d")
+        buckets[d] = {"registrations": 0, "verifications": 0}
+
+    for model in models_registry.values():
+        ts = model.get("registeredAt")
+        if ts:
+            d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%b %d")
+            if d in buckets:
+                buckets[d]["registrations"] += 1
+
+    for logs in verification_logs.values():
+        for entry in logs:
+            ts = entry.get("timestamp")
+            if ts:
+                d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%b %d")
+                if d in buckets:
+                    buckets[d]["verifications"] += 1
+
+    labels        = list(buckets.keys())
+    registrations = [buckets[d]["registrations"]  for d in labels]
+    verifications = [buckets[d]["verifications"]  for d in labels]
+
+    return jsonify({
+        "success": True,
+        "labels": labels,
+        "registrations": registrations,
+        "verifications": verifications,
+        "days": days,
+    }), 200
+
+
+@app.route("/api/registry", methods=["GET"])
+def public_registry():
+    """
+    Public model registry — all models across all owners.
+
+    Query params:
+        q       (str) : substring to match against modelName / modelId / owner
+        page    (int) : 1-indexed page number (default 1)
+        limit   (int) : results per page (default 20, max 50)
+    """
+    try:
+        q     = request.args.get("q", "").lower().strip()
+        page  = max(1, int(request.args.get("page", 1)))
+        limit = min(50, max(1, int(request.args.get("limit", 20))))
+
+        all_models = sorted(
+            models_registry.values(),
+            key=lambda m: m.get("registeredAt", 0),
+            reverse=True,
+        )
+
+        if q:
+            all_models = [
+                m for m in all_models
+                if q in m["modelName"].lower()
+                or q in m["modelId"].lower()
+                or q in m["owner"].lower()
+            ]
+
+        total  = len(all_models)
+        start  = (page - 1) * limit
+        paged  = all_models[start : start + limit]
+
+        return jsonify({
+            "success": True,
+            "models": paged,
+            "total": total,
+            "page": page,
+            "pages": max(1, -(-total // limit)),  # ceiling division
+            "limit": limit,
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/report/<model_id>", methods=["GET"])
+def download_report(model_id):
+    """
+    Generate and stream a PDF integrity report for a model.
+    Includes: model metadata, hash, all version history, and full audit trail.
+    """
+    from fpdf import FPDF
+    from datetime import datetime, timezone
+    from flask import Response
+
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+
+    logs = verification_logs.get(model_id, [])
+
+    def fmt_ts(ts):
+        if not ts:
+            return "—"
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # ── Header banner ─────────────────────────────────────────────────
+    pdf.set_fill_color(30, 20, 60)
+    pdf.rect(0, 0, 210, 28, "F")
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(200, 180, 255)
+    pdf.set_y(7)
+    pdf.cell(0, 10, "BlockVerify — AI Model Integrity Report", align="C")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(160, 140, 220)
+    pdf.set_y(18)
+    pdf.cell(0, 6, f"Generated: {fmt_ts(datetime.now(timezone.utc).timestamp())}   |   blockverify.app", align="C")
+    pdf.set_y(32)
+    pdf.set_text_color(30, 20, 60)
+
+    def section(title):
+        pdf.set_fill_color(240, 237, 255)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(60, 40, 120)
+        pdf.cell(0, 8, f"  {title}", ln=True, fill=True)
+        pdf.set_text_color(20, 20, 40)
+        pdf.ln(2)
+
+    def kv(label, value, mono=False):
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(100, 80, 160)
+        pdf.cell(45, 6, label + ":", ln=False)
+        pdf.set_font("Courier" if mono else "Helvetica", "", 9)
+        pdf.set_text_color(20, 20, 40)
+        # Multi-cell for long values
+        x = pdf.get_x(); y = pdf.get_y()
+        pdf.multi_cell(0, 6, str(value) if value else "—")
+        pdf.ln(1)
+
+    # ── Model Overview ─────────────────────────────────────────────────
+    section("Model Overview")
+    kv("Model Name",   model.get("modelName", "—"))
+    kv("Model ID",     model.get("modelId", "—"),  mono=True)
+    kv("Owner",        model.get("owner", "—"))
+    kv("Status",       "Active" if model.get("isActive") else "Deactivated")
+    kv("Registered At", fmt_ts(model.get("registeredAt")))
+    kv("Block #",      str(model.get("blockIndex", "—")))
+    kv("Version",      f"v{model.get('currentVersion', 1)}")
+    if model.get("metadata"):
+        kv("Metadata", model["metadata"])
+    pdf.ln(4)
+
+    # ── Hash ──────────────────────────────────────────────────────────
+    section("SHA-256 Hash (Current Version)")
+    pdf.set_font("Courier", "", 8.5)
+    pdf.set_fill_color(248, 246, 255)
+    pdf.set_text_color(40, 20, 100)
+    pdf.multi_cell(0, 7, model.get("modelHash", "—"), fill=True, border=1)
+    pdf.set_text_color(20, 20, 40)
+    pdf.ln(4)
+
+    # ── Version History ───────────────────────────────────────────────
+    section(f"Version History  ({len(model.get('versions', []))} version(s))")
+    for v in model.get("versions", []):
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(60, 40, 120)
+        pdf.cell(0, 6, f"  v{v.get('version')}  —  {fmt_ts(v.get('timestamp'))}  —  Block #{v.get('blockIndex', '?')}", ln=True)
+        pdf.set_font("Helvetica", "I", 8.5)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(45, 5, "")
+        pdf.cell(0, 5, v.get("changelog", "—"), ln=True)
+        pdf.set_font("Courier", "", 8)
+        pdf.set_text_color(100, 80, 160)
+        pdf.cell(45, 5, "")
+        pdf.cell(0, 5, v.get("hash", "")[:64] + ("…" if len(v.get("hash", "")) > 64 else ""), ln=True)
+        pdf.set_text_color(20, 20, 40)
+        pdf.ln(1)
+    pdf.ln(4)
+
+    # ── Audit Trail ───────────────────────────────────────────────────
+    section(f"Verification Audit Trail  ({len(logs)} record(s))")
+    if not logs:
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_text_color(120, 120, 120)
+        pdf.cell(0, 6, "  No verifications recorded yet.", ln=True)
+    else:
+        # Table header
+        pdf.set_fill_color(220, 210, 255)
+        pdf.set_font("Helvetica", "B", 8.5)
+        pdf.set_text_color(40, 20, 100)
+        pdf.cell(30, 7, "Verifier",   fill=True, border=1)
+        pdf.cell(18, 7, "Result",     fill=True, border=1)
+        pdf.cell(50, 7, "Timestamp",  fill=True, border=1)
+        pdf.cell(0,  7, "Hash (provided, first 32 chars)", fill=True, border=1, ln=True)
+
+        pdf.set_font("Courier", "", 8)
+        for i, entry in enumerate(logs):
+            fill = i % 2 == 0
+            pdf.set_fill_color(248, 246, 255 if fill else 255)
+            result = "VALID" if entry.get("isValid") else "INVALID"
+            pdf.set_text_color(0, 140, 80) if result == "VALID" else pdf.set_text_color(180, 30, 30)
+            pdf.cell(30, 6, entry.get("verifier", "anon")[:18], fill=fill, border=1)
+            pdf.cell(18, 6, result, fill=fill, border=1)
+            pdf.set_text_color(20, 20, 40)
+            pdf.cell(50, 6, fmt_ts(entry.get("timestamp")), fill=fill, border=1)
+            h = entry.get("providedHash", "—")
+            pdf.cell(0,  6, (h[:32] + "…") if len(h) > 32 else h, fill=fill, border=1, ln=True)
+    pdf.ln(4)
+
+    # ── Footer ────────────────────────────────────────────────────────
+    pdf.set_fill_color(30, 20, 60)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(180, 160, 240)
+    pdf.cell(0, 7, "This report is auto-generated by BlockVerify — a custom Proof-of-Work blockchain system.", align="C", fill=True)
+
+    pdf_bytes = pdf.output()
+    filename  = f"blockverify_report_{model_id[:8]}.pdf"
+    return Response(
+        bytes(pdf_bytes),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+
+
 # ------------------------------------------------------------------ #
 #  Server start                                                        #
 # ------------------------------------------------------------------ #
