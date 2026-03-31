@@ -13,9 +13,10 @@ Author: razor_hats team
 """
 
 import os
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from blockchain import Blockchain
+from blockchain import Blockchain, Block
 from time import time
 import hashlib
 
@@ -26,12 +27,68 @@ import hashlib
 app = Flask(__name__)
 CORS(app)
 
+# Persistence file paths
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+REGISTRY_FILE = os.path.join(DATA_DIR, "models_registry.json")
+LOGS_FILE     = os.path.join(DATA_DIR, "verification_logs.json")
+CHAIN_FILE    = os.path.join(DATA_DIR, "chain.json")
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# ------------------------------------------------------------------ #
+#  Persistence helpers                                                 #
+# ------------------------------------------------------------------ #
+
+def save_state():
+    """Persist registry, logs, and chain to JSON files."""
+    with open(REGISTRY_FILE, "w") as f:
+        json.dump(models_registry, f, indent=2)
+    with open(LOGS_FILE, "w") as f:
+        json.dump(verification_logs, f, indent=2)
+    with open(CHAIN_FILE, "w") as f:
+        json.dump(blockchain.get_chain(), f, indent=2)
+
+
+def load_state():
+    """Restore registry, logs, and chain from JSON files if they exist."""
+    global models_registry, verification_logs
+
+    if os.path.exists(REGISTRY_FILE):
+        with open(REGISTRY_FILE) as f:
+            models_registry.update(json.load(f))
+
+    if os.path.exists(LOGS_FILE):
+        with open(LOGS_FILE) as f:
+            verification_logs.update(json.load(f))
+
+    if os.path.exists(CHAIN_FILE):
+        with open(CHAIN_FILE) as f:
+            chain_data = json.load(f)
+        # Rebuild Block objects from saved dicts
+        rebuilt = []
+        for bd in chain_data:
+            b = Block(
+                index=bd["index"],
+                timestamp=bd["timestamp"],
+                transactions=bd["transactions"],
+                previous_hash=bd["previous_hash"],
+                nonce=bd["nonce"],
+            )
+            b.hash = bd["hash"]   # restore mined hash directly
+            rebuilt.append(b)
+        if rebuilt:
+            blockchain.chain = rebuilt
+
+
 # Custom blockchain (difficulty 4 → hash must start with "0000")
 blockchain = Blockchain(difficulty=4)
 
-# In-memory registries (would be a DB in production)
+# In-memory registries (persisted to disk on every write)
 models_registry = {}        # modelId  → model dict
 verification_logs = {}      # modelId  → [verification records]
+
+# Load saved state on startup
+load_state()
 
 
 # ------------------------------------------------------------------ #
@@ -99,12 +156,15 @@ def register_model():
             ],
         }
         verification_logs[model_id] = []
+        save_state()
 
         return jsonify(
             {
                 "success": True,
                 "modelId": model_id,
                 "blockIndex": new_block.index,
+                "miningTime": new_block.mining_time,
+                "attempts": new_block.attempts,
                 "message": "Model registered successfully",
             }
         ), 200
@@ -154,6 +214,7 @@ def verify_model():
                 "blockIndex": new_block.index,
             }
         )
+        save_state()
 
         return jsonify(
             {
@@ -163,6 +224,8 @@ def verify_model():
                 if is_valid
                 else "INTEGRITY MISMATCH — hash does not match",
                 "blockIndex": new_block.index,
+                "miningTime": new_block.mining_time,
+                "attempts": new_block.attempts,
                 "storedHash": model["modelHash"],
                 "providedHash": data["providedHash"],
             }
@@ -222,12 +285,15 @@ def add_version():
                 "blockIndex": new_block.index,
             }
         )
+        save_state()
 
         return jsonify(
             {
                 "success": True,
                 "version": new_ver,
                 "blockIndex": new_block.index,
+                "miningTime": new_block.mining_time,
+                "attempts": new_block.attempts,
                 "message": f"Version {new_ver} added successfully",
             }
         ), 200
@@ -252,6 +318,7 @@ def deactivate_model():
         tx = {"type": "deactivate", "modelId": data["modelId"], "owner": data["owner"], "timestamp": time()}
         blockchain.add_transaction(tx)
         blockchain.mine_pending_transactions()
+        save_state()
 
         return jsonify({"success": True, "message": "Model deactivated"}), 200
     except Exception as e:
@@ -317,6 +384,39 @@ def validate_chain():
             "message": "Blockchain is valid ✓" if result["valid"] else "Blockchain has integrity errors ✗",
         }
     ), 200
+
+
+@app.route("/api/search", methods=["GET"])
+def search_models():
+    """
+    Search models by name, hash, or owner.
+
+    Query params:
+        q     (str) : substring to match against modelName and modelHash
+        owner (str) : filter by exact owner (optional)
+
+    Returns:
+        JSON with matching models list and count.
+    """
+    try:
+        q     = request.args.get("q", "").lower().strip()
+        owner = request.args.get("owner", "").strip()
+
+        results = []
+        for model in models_registry.values():
+            if owner and model["owner"] != owner:
+                continue
+            if q and not (
+                q in model["modelName"].lower() or
+                q in model["modelHash"].lower() or
+                q in model["modelId"].lower()
+            ):
+                continue
+            results.append(model)
+
+        return jsonify({"success": True, "models": results, "count": len(results)}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/stats", methods=["GET"])
