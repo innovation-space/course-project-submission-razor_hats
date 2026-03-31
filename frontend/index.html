@@ -6,288 +6,417 @@
   <title>BlockVerify — AI Model Integrity Verification</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ═══════════ Reset & Variables ═══════════ */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:         #080b12;
-      --surface:    #0f1420;
-      --surface2:   #171d2e;
-      --border:     #252d42;
-      --text:       #e8eaf0;
-      --text-muted: #7a829e;
-      --primary:    #6c5ce7;
-      --primary-h:  #a29bfe;
-      --success:    #00cec9;
-      --danger:     #ff6b6b;
-      --warn:       #feca57;
-      --radius:     10px;
-      --font:       'Outfit', sans-serif;
-      --mono:       'JetBrains Mono', monospace;
+      --bg: #080b12; --surface: rgba(15, 20, 32, 0.45); --surface2: rgba(23, 29, 46, 0.55);
+      --border: rgba(255, 255, 255, 0.08); --text: #e8eaf0; --text-muted: #8e9bb0;
+      --primary: #6c5ce7; --primary-h: #8b7cff; --success: #00cec9; --danger: #ff6b6b;
+      --warn: #feca57; --radius: 16px; --font: 'Outfit', sans-serif; --mono: 'JetBrains Mono', monospace;
     }
-
     body.light-theme {
-      --bg:         #f8fafc;
-      --surface:    #ffffff;
-      --surface2:   #f1f5f9;
-      --border:     #e2e8f0;
-      --text:       #0f172a;
-      --text-muted: #64748b;
-      --primary:    #4f46e5;
-      --primary-h:  #4338ca;
+      --bg: #f8fafc; --surface: rgba(255,255,255,0.65); --surface2: rgba(255,255,255,0.85);
+      --border: rgba(0,0,0,0.08); --text: #1e293b; --text-muted: #64748b;
+      --primary: #4f46e5; --primary-h: #6366f1;
     }
 
     body {
-      font-family: var(--font);
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.6;
-      min-height: 100vh;
-      background-image:
-        radial-gradient(ellipse at 20% 0%, rgba(108,92,231,.08) 0%, transparent 60%),
-        radial-gradient(ellipse at 80% 100%, rgba(0,206,201,.06) 0%, transparent 50%);
+      font-family: var(--font); background: var(--bg); color: var(--text);
+      line-height: 1.6; min-height: 100vh; overflow-x: hidden; position: relative;
     }
+    body::before, body::after {
+      content: ''; position: fixed; border-radius: 50%; filter: blur(120px); z-index: -1;
+      animation: float 20s infinite alternate ease-in-out;
+    }
+    body::before { top: -10%; left: -10%; width: 50vw; height: 50vw; background: rgba(108,92,231,0.15); }
+    body::after  { bottom: -10%; right: -10%; width: 40vw; height: 40vw; background: rgba(0,206,201,0.12); animation-delay: -10s; }
+    @keyframes float { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(10%,15%) scale(1.1); } }
 
-    /* ═══════════ Header ═══════════ */
+    /* ── Header ── */
     .header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: .9rem 2rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: .75rem;
+      background: var(--surface); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border); padding: 1rem 2rem;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+      position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 30px rgba(0,0,0,0.1);
     }
-    .logo { display: flex; align-items: center; gap: .6rem; font-size: 1.35rem; font-weight: 700; letter-spacing: -.02em; }
+    .logo { display: flex; align-items: center; gap: .8rem; font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
     .logo-icon {
-      width: 34px; height: 34px;
-      background: linear-gradient(135deg, var(--primary), var(--success));
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem;
+      width: 38px; height: 38px; background: linear-gradient(135deg, var(--primary), var(--success));
+      border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+      box-shadow: 0 0 15px rgba(108,92,231,0.4);
     }
-    .user-box { display: flex; align-items: center; gap: .5rem; }
-    .user-box label { font-size: .82rem; color: var(--text-muted); }
+    .user-box { display: flex; align-items: center; gap: .6rem; }
+    .user-box label { font-size: .85rem; color: var(--text-muted); font-weight: 500; }
     .user-box input {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
-      padding: .4rem .7rem; color: var(--text); font-family: var(--font); font-size: .88rem; width: 150px;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      padding: .5rem .8rem; color: var(--text); font-family: var(--font); font-size: .9rem;
+      width: 160px; transition: all 0.2s;
     }
-    .user-box input:focus { outline: none; border-color: var(--primary); }
+    .user-box input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(108,92,231,0.2); }
 
-    /* ═══════════ Layout ═══════════ */
-    .app { max-width: 1060px; margin: 0 auto; padding: 1.5rem; }
+    .app { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
 
-    /* ═══════════ Stats ═══════════ */
-    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin-bottom: 1.5rem; }
-    .stat-card {
+    /* ── Cards ── */
+    .card, .stat-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 1rem; text-align: center;
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15); transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
-    .stat-val { font-size: 1.8rem; font-weight: 700; color: var(--primary); }
-    .stat-lbl { font-size: .78rem; color: var(--text-muted); margin-top: .15rem; }
+    .card { padding: 1.8rem; margin-bottom: 1.5rem; }
+    .stat-card { padding: 1.5rem; text-align: center; }
+    .stat-card:hover { transform: translateY(-6px); box-shadow: 0 12px 40px rgba(0,0,0,0.25); border-color: rgba(255,255,255,0.15); }
 
-    /* ═══════════ Tabs ═══════════ */
-    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; }
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-bottom: 2rem; }
+    .stat-val {
+      font-size: 2.2rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--primary-h));
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .stat-lbl { font-size: .85rem; color: var(--text-muted); margin-top: .25rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: .5rem; border-bottom: 1px solid var(--border); margin-bottom: 2rem; overflow-x: auto; padding-bottom: 0.5rem; }
     .tab {
-      background: none; border: none; color: var(--text-muted); padding: .65rem 1rem;
-      cursor: pointer; font-family: var(--font); font-size: .88rem; font-weight: 500;
-      border-bottom: 2px solid transparent; white-space: nowrap; transition: .2s;
+      background: transparent; border: none; color: var(--text-muted); padding: .65rem 1.2rem;
+      cursor: pointer; font-family: var(--font); font-size: .95rem; font-weight: 600;
+      position: relative; transition: color 0.3s; white-space: nowrap;
+    }
+    .tab::after {
+      content: ''; position: absolute; bottom: -0.6rem; left: 0; width: 100%; height: 3px;
+      background: var(--primary); border-radius: 3px 3px 0 0;
+      transform: scaleX(0); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
     }
     .tab:hover { color: var(--text); }
-    .tab.active { color: var(--primary-h); border-bottom-color: var(--primary); }
+    .tab.active { color: var(--primary-h); }
+    .tab.active::after { transform: scaleX(1); }
     .tab-content { display: none; }
-    .tab-content.active { display: block; animation: fadeIn .25s ease; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .tab-content.active { display: block; animation: slideUpFade .4s cubic-bezier(0.16,1,0.3,1); }
+    @keyframes slideUpFade { from { opacity:0; transform:translateY(15px); } to { opacity:1; transform:translateY(0); } }
 
-    /* ═══════════ Card ═══════════ */
-    .card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 1.4rem; margin-bottom: 1.25rem;
-    }
-    .card h2 { font-size: 1.1rem; margin-bottom: .85rem; display: flex; align-items: center; gap: .4rem; }
-
-    /* ═══════════ Forms ═══════════ */
-    .fg { margin-bottom: .85rem; }
-    .fg label { display: block; margin-bottom: .3rem; font-size: .8rem; color: var(--text-muted); font-weight: 500; }
+    /* ── Typography & Forms ── */
+    .card h2 { font-size: 1.3rem; margin-bottom: .4rem; display: flex; align-items: center; gap: .5rem; font-weight: 700; }
+    .card .subtitle { color: var(--text-muted); font-size: .85rem; margin-bottom: 1.2rem; }
+    .fg { margin-bottom: 1.2rem; }
+    .fg label { display: block; margin-bottom: .4rem; font-size: .85rem; color: var(--text-muted); font-weight: 600; }
     input[type="text"], textarea {
-      width: 100%; padding: .6rem .8rem; background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 8px; color: var(--text); font-family: var(--font); font-size: .88rem;
+      width: 100%; padding: .75rem 1rem; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-family: var(--font); font-size: .95rem;
+      box-shadow: inset 0 2px 5px rgba(0,0,0,0.05); transition: 0.2s;
     }
-    input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--primary); }
-    textarea { resize: vertical; min-height: 60px; }
+    input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(108,92,231,0.2); }
+    textarea { resize: vertical; min-height: 80px; }
 
+    /* ── Buttons ── */
     .btn {
-      background: var(--primary); color: #fff; border: none; padding: .6rem 1.3rem; border-radius: 8px;
-      cursor: pointer; font-family: var(--font); font-size: .9rem; font-weight: 600; transition: .2s;
-      display: inline-flex; align-items: center; gap: .4rem;
+      background: linear-gradient(135deg, var(--primary), var(--primary-h)); color: #fff; border: none;
+      padding: .75rem 1.6rem; border-radius: 10px; cursor: pointer; font-family: var(--font);
+      font-size: .95rem; font-weight: 600; transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+      display: inline-flex; align-items: center; gap: .5rem;
+      box-shadow: 0 4px 15px rgba(108,92,231,0.4); position: relative; overflow: hidden;
     }
-    .btn:hover { background: var(--primary-h); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-    .btn-sec { background: var(--surface2); border: 1px solid var(--border); }
-    .btn-sec:hover { background: var(--border); }
+    .btn::after {
+      content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent);
+      transform: skewX(-20deg); transition: 0.5s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(108,92,231,0.6); }
+    .btn:hover::after { left: 150%; }
+    .btn:active { transform: translateY(1px) scale(0.97); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
+    .btn-sec { background: var(--surface2); border: 1px solid var(--border); box-shadow: none; color: var(--text); }
+    .btn-sec::after { display: none; }
+    .btn-sec:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.2); }
+    .btn-danger { background: linear-gradient(135deg, #c0392b, var(--danger)); box-shadow: 0 4px 15px rgba(255,107,107,0.3); }
+    .btn-danger:hover { box-shadow: 0 6px 20px rgba(255,107,107,0.5); }
 
-    /* ═══════════ File Drop ═══════════ */
+    /* ── File Drop ── */
     .file-drop {
-      border: 2px dashed var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center;
-      cursor: pointer; transition: .2s;
+      border: 2px dashed var(--border); border-radius: var(--radius); padding: 2.5rem 1.5rem;
+      text-align: center; cursor: pointer; transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+      background: var(--surface2); position: relative; overflow: hidden;
     }
-    .file-drop:hover, .file-drop.dragover { border-color: var(--primary); background: rgba(108,92,231,.06); }
-    .file-drop p { color: var(--text-muted); font-size: .88rem; }
-    .file-name { color: var(--success); font-weight: 600; margin-top: .4rem; font-size: .85rem; }
+    .file-drop::before {
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle at center, rgba(108,92,231,0.1) 0%, transparent 70%);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .file-drop:hover, .file-drop.dragover { border-color: var(--primary); transform: scale(1.01); box-shadow: 0 10px 30px rgba(108,92,231,0.15); }
+    .file-drop:hover::before, .file-drop.dragover::before { opacity: 1; }
+    .file-drop p { color: var(--text-muted); font-size: 1rem; position: relative; z-index: 1; font-weight: 500; }
+    .file-drop span.icon { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; transition: transform 0.3s; }
+    .file-drop:hover span.icon { transform: translateY(-4px); }
+    .file-name { color: var(--success); font-weight: 600; margin-top: .8rem; font-size: .95rem; position: relative; z-index: 1; }
 
-    /* ═══════════ Hash Display ═══════════ */
+    /* ── Hash box ── */
     .hash-box {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-      padding: .55rem .75rem; font-family: var(--mono); font-size: .75rem;
-      word-break: break-all; color: var(--warn); margin-top: .4rem;
+      background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px;
+      padding: .6rem .8rem; font-family: var(--mono); font-size: .8rem; word-break: break-all;
+      color: var(--warn); margin-top: .5rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
     }
+    .hash-box span { flex: 1; word-break: break-all; }
+    .copy-btn {
+      background: none; border: 1px solid var(--border); border-radius: 6px; padding: .2rem .5rem;
+      color: var(--text-muted); cursor: pointer; font-size: .75rem; flex-shrink: 0;
+      transition: all 0.2s; font-family: var(--font);
+    }
+    .copy-btn:hover { border-color: var(--primary); color: var(--primary-h); background: rgba(108,92,231,0.1); }
+    .copy-btn.copied { border-color: var(--success); color: var(--success); }
 
-    /* ═══════════ Toasts ═══════════ */
-    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+    /* ── Tables ── */
+    .tbl { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 1rem; font-size: .85rem; }
+    .tbl th { text-align: left; padding: .8rem 1rem; border-bottom: 2px solid var(--border); color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+    .tbl td { padding: .8rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface2); transition: background 0.2s; }
+    .tbl tr:first-child td:first-child { border-top-left-radius: 8px; }
+    .tbl tr:first-child td:last-child { border-top-right-radius: 8px; }
+    .tbl tr:last-child td:first-child { border-bottom-left-radius: 8px; border-bottom: none; }
+    .tbl tr:last-child td:last-child { border-bottom-right-radius: 8px; border-bottom: none; }
+    .tbl tr:hover td { background: rgba(255,255,255,0.04); }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: .2rem .6rem; border-radius: 20px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge-ok  { background: rgba(0,206,201,.15);  color: var(--success); border: 1px solid rgba(0,206,201,.3); }
+    .badge-err { background: rgba(255,107,107,.15); color: var(--danger);  border: 1px solid rgba(255,107,107,.3); }
+    .badge-warn{ background: rgba(254,202,87,.15);  color: var(--warn);    border: 1px solid rgba(254,202,87,.3); }
+
+    /* ── Toasts ── */
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
     .toast {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-      padding: 1rem 1.2rem; min-width: 280px; font-size: 0.9rem;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-      transform: translateX(120%); opacity: 0;
-      animation: toastSlideIn 0.3s forwards ease-out;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1rem 1.4rem; min-width: 300px; max-width: 420px; font-size: .95rem; font-weight: 500;
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 15px 35px rgba(0,0,0,0.3); transform: translateX(120%); opacity: 0;
+      animation: toastIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards;
+      display: flex; align-items: flex-start; gap: 0.8rem;
     }
-    .toast.hide { animation: toastSlideOut 0.3s forwards ease-in; }
-    @keyframes toastSlideIn { to { transform: translateX(0); opacity: 1; } }
-    @keyframes toastSlideOut { to { transform: translateX(120%); opacity: 0; } }
-    .toast.ok { border-left: 4px solid var(--success); }
-    .toast.err { border-left: 4px solid var(--danger); }
-    .toast.info { border-left: 4px solid var(--primary); }
-    .status { display: none !important; } /* Hide old inline statuses */
+    .toast.hide { animation: toastOut 0.3s forwards ease-in; }
+    @keyframes toastIn  { to { transform: translateX(0); opacity: 1; } }
+    @keyframes toastOut { to { transform: translateX(120%); opacity: 0; } }
+    .toast.ok   { border-left: 4px solid var(--success); } .toast.ok::before   { content: '✅'; }
+    .toast.err  { border-left: 4px solid var(--danger);  } .toast.err::before  { content: '❌'; }
+    .toast.info { border-left: 4px solid var(--primary); } .toast.info::before { content: 'ℹ️'; }
+    .status { display: none !important; }
 
-    /* ═══════════ Tables ═══════════ */
-    .tbl { width: 100%; border-collapse: collapse; margin-top: .75rem; font-size: .82rem; }
-    .tbl th { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 500; }
-    .tbl td { padding: .5rem .6rem; border-bottom: 1px solid rgba(255,255,255,.03); }
-    .tbl tr:hover { background: rgba(255,255,255,.02); }
+    /* ── Verify result panel ── */
+    .verify-result { margin-top: 1.2rem; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); animation: slideUpFade .3s ease; }
+    .verify-result-header { padding: 1.2rem 1.5rem; display: flex; align-items: center; gap: .8rem; font-size: 1.1rem; font-weight: 700; }
+    .verify-result.valid .verify-result-header { background: rgba(0,206,201,0.12); color: var(--success); border-bottom: 1px solid rgba(0,206,201,0.2); }
+    .verify-result.invalid .verify-result-header { background: rgba(255,107,107,0.12); color: var(--danger); border-bottom: 1px solid rgba(255,107,107,0.2); }
+    .verify-result-body { padding: 1.2rem 1.5rem; background: var(--surface2); display: flex; flex-direction: column; gap: .8rem; }
+    .hash-compare-row { display: flex; flex-direction: column; gap: .3rem; }
+    .hash-compare-row label { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .hash-compare-row code { font-family: var(--mono); font-size: .78rem; word-break: break-all; padding: .5rem .7rem; border-radius: 6px; display: block; }
+    .hash-match   { background: rgba(0,206,201,0.08);  color: var(--success); border: 1px solid rgba(0,206,201,0.2); }
+    .hash-nomatch { background: rgba(255,107,107,0.08); color: var(--danger);  border: 1px solid rgba(255,107,107,0.2); }
+    .hash-neutral { background: rgba(0,0,0,0.15); color: var(--warn); border: 1px solid var(--border); }
 
-    /* ═══════════ Badges ═══════════ */
-    .badge { display: inline-block; padding: .1rem .5rem; border-radius: 10px; font-size: .75rem; font-weight: 600; }
-    .badge-ok  { background: rgba(0,206,201,.18); color: var(--success); }
-    .badge-err { background: rgba(255,107,107,.18); color: var(--danger); }
-
-    /* ═══════════ Blockchain Explorer ═══════════ */
-    .chain-container { display: flex; align-items: flex-start; gap: 1.5rem; overflow-x: auto; padding: 1rem 0 2rem; }
-    .block-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 1.2rem; min-width: 330px; max-width: 330px; flex-shrink: 0; position: relative;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 4px solid var(--primary);
+    /* ── Model ID result box ── */
+    .model-id-box {
+      background: rgba(108,92,231,0.1); border: 1px solid rgba(108,92,231,0.3);
+      border-radius: 10px; padding: 1rem 1.2rem; margin-top: 1rem; animation: slideUpFade .3s ease;
     }
-    .chain-arrow {
-      color: var(--primary); font-size: 2rem; display: flex; align-items: center; justify-content: center;
-      margin-top: 3.5rem; flex-shrink: 0; opacity: 0.8;
-    }
-    .block-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: .8rem; }
-    .block-hdr strong { font-size: 1.1rem; color: var(--text); }
-    .block-hdr span { font-size: .75rem; color: var(--text-muted); background: var(--surface2); padding: 0.2rem 0.5rem; border-radius: 4px; }
-    .block-row { font-size: .8rem; margin-bottom: .4rem; word-break: break-all; }
-    .block-row strong { color: var(--text-muted); font-weight: 500; display: block; margin-bottom: 0.1rem; }
-    .block-row code { font-family: var(--mono); font-size: .72rem; color: var(--warn); background: rgba(0,0,0,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; display: block; }
-    details { margin-top: .8rem; font-size: .78rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; }
-    details summary { cursor: pointer; color: var(--primary-h); font-weight: 600; outline: none; }
-    details pre { background: var(--bg); padding: .5rem; border-radius: 6px; margin-top: .5rem; overflow-x: auto; font-size: .72rem; color: var(--text-muted); border: 1px solid var(--border); }
+    .model-id-box label { font-size: .75rem; font-weight: 700; color: var(--primary-h); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: .4rem; }
+    .model-id-box .id-row { display: flex; align-items: center; gap: .5rem; }
+    .model-id-box code { font-family: var(--mono); font-size: .9rem; color: var(--text); flex: 1; word-break: break-all; }
 
-    /* ═══════════ Spinner ═══════════ */
-    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .5s linear infinite; }
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 3rem 2rem; color: var(--text-muted); }
+    .empty-state .empty-icon { font-size: 3.5rem; margin-bottom: 1rem; display: block; opacity: .6; }
+    .empty-state p { font-size: .95rem; margin-bottom: 1.2rem; }
+
+    /* ── Skeletons & Spinners ── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface2) 25%, rgba(255,255,255,0.05) 50%, var(--surface2) 75%);
+      background-size: 200% 100%; animation: skeletonLoad 1.5s infinite;
+      border-radius: 6px; height: 1.2rem; margin-bottom: 0.5rem;
+    }
+    @keyframes skeletonLoad { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; flex-shrink: 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ═══════════ Responsive ═══════════ */
-    @media (max-width: 700px) {
-      .header { flex-direction: column; }
+    /* ── Blockchain Block Cards ── */
+    .chain-wrapper { overflow-x: auto; overflow-y: hidden; padding: 1.5rem 0 2rem; }
+    .chain-container { display: flex; align-items: flex-start; gap: 0; width: max-content; padding: 0 .5rem; }
+
+    .chain-connector { display: flex; align-items: center; margin-top: 3.2rem; flex-shrink: 0; width: 60px; }
+    .chain-connector svg { width: 60px; height: 20px; }
+
+    .block-card {
+      width: 300px; flex-shrink: 0; border-radius: 18px; overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: linear-gradient(160deg, rgba(20,25,40,0.9) 0%, rgba(12,16,28,0.95) 100%);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      position: relative;
+    }
+    .block-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--primary-h), var(--success));
+    }
+    .block-card.genesis::before { background: linear-gradient(90deg, #f0b429, #f6d860, #f0b429); }
+    .block-card:hover { transform: translateY(-6px); box-shadow: 0 20px 50px rgba(0,0,0,0.45), 0 4px 12px rgba(108,92,231,0.2); }
+
+    .bc-hdr {
+      padding: 1rem 1.2rem .7rem; display: flex; justify-content: space-between; align-items: flex-start;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .bc-index { font-size: 1.15rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: .4rem; }
+    .bc-index-badge {
+      font-size: .7rem; font-weight: 700; padding: .15rem .45rem; border-radius: 20px;
+      background: rgba(108,92,231,0.2); color: var(--primary-h); border: 1px solid rgba(108,92,231,0.3);
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .block-card.genesis .bc-index-badge { background: rgba(240,180,41,0.15); color: #f6d860; border-color: rgba(240,180,41,0.3); }
+    .bc-time { font-size: .72rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: .2rem .5rem; border-radius: 6px; }
+
+    .bc-body { padding: .8rem 1.2rem; display: flex; flex-direction: column; gap: .6rem; }
+    .bc-field { display: flex; flex-direction: column; gap: .15rem; }
+    .bc-field-label {
+      font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); display: flex; align-items: center; gap: .3rem;
+    }
+    .bc-field-label::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+    .block-card.genesis .bc-field-label::before { background: #f6d860; }
+    .bc-hash-val {
+      font-family: var(--mono); font-size: .72rem; color: var(--warn);
+      background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 7px; padding: .4rem .6rem; word-break: break-all;
+      display: flex; align-items: center; justify-content: space-between; gap: .3rem;
+    }
+    .bc-hash-val span { flex: 1; word-break: break-all; }
+    .bc-copy { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: .1rem; font-size: .8rem; transition: color 0.2s; flex-shrink: 0; }
+    .bc-copy:hover { color: var(--primary-h); }
+    .bc-copy.copied { color: var(--success); }
+
+    .bc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; padding: .7rem 1.2rem; border-top: 1px solid rgba(255,255,255,0.06); }
+    .bc-stat { background: rgba(0,0,0,0.2); border-radius: 8px; padding: .5rem .7rem; }
+    .bc-stat-val { font-family: var(--mono); font-size: .95rem; font-weight: 600; color: var(--text); }
+    .bc-stat-lbl { font-size: .65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-top: .1rem; }
+
+    .bc-txns { border-top: 1px solid rgba(255,255,255,0.06); }
+    .bc-txns-toggle {
+      width: 100%; background: none; border: none; padding: .7rem 1.2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; color: var(--primary-h); font-family: var(--font); font-size: .82rem; font-weight: 600;
+      transition: background 0.2s;
+    }
+    .bc-txns-toggle:hover { background: rgba(108,92,231,0.08); }
+    .bc-txns-arrow { font-size: .6rem; transition: transform 0.2s; }
+    .bc-txns-body { display: none; padding: .5rem 1.2rem .8rem; max-height: 200px; overflow-y: auto; }
+    .bc-txns-body.open { display: block; animation: slideUpFade .2s ease; }
+    .bc-txns-body pre { font-family: var(--mono); font-size: .7rem; color: var(--text-muted); white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+    .bc-txns-body::-webkit-scrollbar { width: 4px; }
+    .bc-txns-body::-webkit-scrollbar-track { background: transparent; }
+    .bc-txns-body::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+
+    /* ── My Models grid ── */
+    .model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap: 1rem; margin-top: 1rem; }
+    .model-item {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.2rem;
+      transition: transform 0.2s, border-color 0.2s; position: relative; overflow: hidden;
+    }
+    .model-item::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--primary), var(--success)); }
+    .model-item:hover { transform: translateY(-3px); border-color: rgba(108,92,231,0.3); }
+    .model-item-name { font-weight: 700; font-size: 1rem; margin-bottom: .3rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .model-item-id { font-family: var(--mono); font-size: .72rem; color: var(--text-muted); margin-bottom: .7rem; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+    .model-item-id code { word-break: break-all; }
+    .model-item-meta { font-size: .8rem; color: var(--text-muted); display: flex; gap: 1rem; flex-wrap: wrap; margin-top: .5rem; }
+    .model-item-actions { margin-top: .9rem; display: flex; gap: .5rem; flex-wrap: wrap; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .header { flex-direction: column; padding: 1rem; }
       .stats { grid-template-columns: 1fr; }
-      .tabs { gap: 0; }
+      .app { padding: 1rem; }
+      .block-card { width: 260px; }
     }
   </style>
 </head>
 <body>
 
-<!-- ═══════════ Header ═══════════ -->
 <header class="header">
   <div class="logo">
     <div class="logo-icon">🔗</div>
-    <span>BlockVerify <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">v1.0.0 (Milestone 2)</span></span>
+    <span>BlockVerify</span>
   </div>
   <div class="user-box">
     <label>Username:</label>
     <input type="text" id="username" placeholder="e.g. alice" />
-    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;margin-left:8px;outline:none;" title="Toggle Light/Dark Mode">☀️</button>
+    <button onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;margin-left:8px;outline:none;transition:transform 0.2s;" id="themeToggle" title="Toggle theme" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">☀️</button>
   </div>
 </header>
 
-<!-- ═══════════ App ═══════════ -->
+<div id="toastContainer" class="toast-container"></div>
+
 <div class="app">
 
   <!-- Stats -->
   <div class="stats">
-    <div class="stat-card"><div class="stat-val" id="sModels">0</div><div class="stat-lbl">Models Registered</div></div>
-    <div class="stat-card"><div class="stat-val" id="sVerify">0</div><div class="stat-lbl">Verifications</div></div>
-    <div class="stat-card"><div class="stat-val" id="sBlocks">0</div><div class="stat-lbl">Blockchain Blocks</div></div>
+    <div class="stat-card"><div class="stat-val" id="sModels">—</div><div class="stat-lbl">Models Registered</div></div>
+    <div class="stat-card"><div class="stat-val" id="sVerify">—</div><div class="stat-lbl">Verifications</div></div>
+    <div class="stat-card"><div class="stat-val" id="sBlocks">—</div><div class="stat-lbl">Blockchain Blocks</div></div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('register',this)">📝 Register</button>
-    <button class="tab" onclick="switchTab('verify',this)">✅ Verify</button>
-    <button class="tab" onclick="switchTab('versions',this)">📋 Versions</button>
-    <button class="tab" onclick="switchTab('audit',this)">🔍 Audit Trail</button>
-    <button class="tab" onclick="switchTab('models',this)">📦 My Models</button>
-    <button class="tab" onclick="switchTab('explorer',this)">🔗 Explorer</button>
+    <button class="tab active"  onclick="switchTab('register',this)">📝 Register</button>
+    <button class="tab"         onclick="switchTab('verify',this)">✅ Verify</button>
+    <button class="tab"         onclick="switchTab('versions',this)">📋 Versions</button>
+    <button class="tab"         onclick="switchTab('audit',this)">🔍 Audit Trail</button>
+    <button class="tab"         onclick="switchTab('models',this)">📦 My Models</button>
+    <button class="tab"         onclick="switchTab('explorer',this)">🔗 Explorer</button>
   </div>
 
-  <!-- ═══ Register ═══ -->
+  <!-- Register -->
   <div class="tab-content active" id="tab-register">
     <div class="card">
       <h2>📝 Register AI Model</h2>
-      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem;">Upload a model file to compute its SHA-256 hash and register it on the blockchain.</p>
+      <p class="subtitle">Upload a model file to compute its SHA-256 hash and register it on the blockchain.</p>
       <div class="fg">
         <label>Model File</label>
         <div class="file-drop" id="regDrop" onclick="document.getElementById('regFile').click()">
-          <p>📂 Click or drag &amp; drop a model file</p>
+          <span class="icon">📂</span>
+          <p>Click or drag &amp; drop a model file</p>
           <div class="file-name" id="regFN"></div>
         </div>
         <input type="file" id="regFile" style="display:none" onchange="onFile('reg')">
       </div>
-      <div id="regHashWrap" style="display:none">
-        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
-        <div class="hash-box" id="regHash"></div>
+      <div id="regHashWrap" style="display:none;margin-bottom:1rem;">
+        <label style="font-size:.8rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:.4rem;">SHA-256 Hash</label>
+        <div class="hash-box"><span id="regHash"></span><button class="copy-btn" onclick="copyText(document.getElementById('regHash').textContent, this)">Copy</button></div>
       </div>
-      <div class="fg" style="margin-top:.75rem"><label>Model Name *</label><input type="text" id="regName" placeholder="e.g. ResNet50-Health-v1"></div>
+      <div class="fg"><label>Model Name *</label><input type="text" id="regName" placeholder="e.g. ResNet50-Health-v1"></div>
       <div class="fg"><label>Metadata (optional)</label><textarea id="regMeta" placeholder="IPFS CID, description, etc."></textarea></div>
       <button class="btn" id="regBtn" onclick="registerModel()">Register Model</button>
-      <div class="status" id="regStatus"></div>
+      <div id="regModelResult"></div>
     </div>
   </div>
 
-  <!-- ═══ Verify ═══ -->
+  <!-- Verify -->
   <div class="tab-content" id="tab-verify">
     <div class="card">
       <h2>✅ Verify Model Integrity</h2>
-      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem;">Upload a model file and provide its Model ID to check against the blockchain record.</p>
+      <p class="subtitle">Upload a model file and provide its Model ID to check against the blockchain record.</p>
       <div class="fg">
         <label>Model File</label>
         <div class="file-drop" id="verDrop" onclick="document.getElementById('verFile').click()">
-          <p>📂 Click or drag &amp; drop the model file</p>
+          <span class="icon">📂</span>
+          <p>Click or drag &amp; drop the model file</p>
           <div class="file-name" id="verFN"></div>
         </div>
         <input type="file" id="verFile" style="display:none" onchange="onFile('ver')">
       </div>
-      <div id="verHashWrap" style="display:none">
-        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
-        <div class="hash-box" id="verHash"></div>
+      <div id="verHashWrap" style="display:none;margin-bottom:1rem;">
+        <label style="font-size:.8rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:.4rem;">SHA-256 Hash</label>
+        <div class="hash-box"><span id="verHash"></span><button class="copy-btn" onclick="copyText(document.getElementById('verHash').textContent, this)">Copy</button></div>
       </div>
-      <div class="fg" style="margin-top:.75rem"><label>Model ID</label><input type="text" id="verModelId" placeholder="Paste the model ID you received at registration"></div>
-      <button class="btn" onclick="verifyModel()">Verify Integrity</button>
-      <div class="status" id="verStatus"></div>
+      <div class="fg"><label>Model ID</label><input type="text" id="verModelId" placeholder="Paste the model ID you received at registration"></div>
+      <button class="btn" id="verBtn" onclick="verifyModel()">Verify Integrity</button>
       <div id="verResult"></div>
     </div>
   </div>
 
-  <!-- ═══ Versions ═══ -->
+  <!-- Versions -->
   <div class="tab-content" id="tab-versions">
     <div class="card">
       <h2>📋 Version History</h2>
@@ -301,22 +430,22 @@
       <div class="fg">
         <label>New Model File</label>
         <div class="file-drop" id="avDrop" onclick="document.getElementById('avFile').click()">
-          <p>📂 Select the updated model file</p>
+          <span class="icon">📂</span>
+          <p>Select the updated model file</p>
           <div class="file-name" id="avFN"></div>
         </div>
         <input type="file" id="avFile" style="display:none" onchange="onFile('av')">
       </div>
-      <div id="avHashWrap" style="display:none">
-        <label style="font-size:.8rem;color:var(--text-muted);">SHA-256 Hash</label>
-        <div class="hash-box" id="avHash"></div>
+      <div id="avHashWrap" style="display:none;margin-bottom:1rem;">
+        <label style="font-size:.8rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:.4rem;">SHA-256 Hash</label>
+        <div class="hash-box"><span id="avHash"></span><button class="copy-btn" onclick="copyText(document.getElementById('avHash').textContent, this)">Copy</button></div>
       </div>
-      <div class="fg" style="margin-top:.75rem"><label>Changelog *</label><textarea id="avLog" placeholder="Describe changes in this version..."></textarea></div>
-      <button class="btn" onclick="addVersion()">Add Version</button>
-      <div class="status" id="avStatus"></div>
+      <div class="fg"><label>Changelog *</label><textarea id="avLog" placeholder="Describe changes in this version..."></textarea></div>
+      <button class="btn" id="avBtn" onclick="addVersion()">Add Version</button>
     </div>
   </div>
 
-  <!-- ═══ Audit ═══ -->
+  <!-- Audit -->
   <div class="tab-content" id="tab-audit">
     <div class="card">
       <h2>🔍 Verification Audit Trail</h2>
@@ -326,69 +455,82 @@
     </div>
   </div>
 
-  <!-- ═══ My Models ═══ -->
+  <!-- My Models -->
   <div class="tab-content" id="tab-models">
     <div class="card">
       <h2>📦 My Registered Models</h2>
-      <button class="btn btn-sec" onclick="loadMyModels()">Refresh</button>
+      <p class="subtitle">Models registered under your username.</p>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem;">
+        <button class="btn btn-sec" onclick="loadMyModels()">Refresh</button>
+        <input type="text" id="modelSearch" placeholder="Search by name or ID…" oninput="filterModels()" style="flex:1;min-width:180px;max-width:320px;" />
+      </div>
       <div id="modelsResult" style="margin-top:.75rem;"></div>
     </div>
   </div>
 
-  <!-- ═══ Blockchain Explorer ═══ -->
+  <!-- Explorer -->
   <div class="tab-content" id="tab-explorer">
     <div class="card">
       <h2>🔗 Blockchain Explorer</h2>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <p class="subtitle">Browse every block and transaction on the chain.</p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button class="btn btn-sec" onclick="loadChain()">Refresh Chain</button>
-        <button class="btn" onclick="validateChain()">Validate Chain Integrity</button>
+        <button class="btn" id="validateBtn" onclick="validateChain()">Validate Chain Integrity</button>
       </div>
-      <div id="chainValid" style="margin-top:.75rem;"></div>
-      <div id="chainView" style="margin-top:.75rem;"></div>
+      <div id="chainValid"></div>
+      <div id="chainView"></div>
+      <div id="chainPager" style="display:none;margin-top:1.2rem;align-items:center;justify-content:center;gap:.8rem;">
+        <button class="btn btn-sec" id="pgPrev" onclick="changePage(-1)" style="padding:.5rem 1.1rem;">← Prev</button>
+        <span id="pgLabel" style="font-size:.88rem;color:var(--text-muted);"></span>
+        <button class="btn btn-sec" id="pgNext" onclick="changePage(1)" style="padding:.5rem 1.1rem;">Next →</button>
+      </div>
     </div>
   </div>
 
-  <!-- Toast Container -->
-  <div id="toastContainer" class="toast-container"></div>
 </div>
 
-<!-- ═══════════ JavaScript ═══════════ -->
 <script>
 const API = 'http://localhost:5000/api';
-const hashes = {};  // section → computed hash hex string
+const hashes = {};
+let _allModels = [];
+let _allBlocks = [];
+const BLOCKS_PER_PAGE = 5;
+let _currentPage = 0;
 
-// ────────── Theme ──────────
-function toggleTheme() {
-  const isLight = document.body.classList.toggle('light-theme');
-  document.getElementById('themeToggle').textContent = isLight ? '🌙' : '☀️';
-  localStorage.setItem('theme', isLight ? 'light' : 'dark');
-}
-
-if (localStorage.getItem('theme') === 'light') {
-  document.body.classList.add('light-theme');
-  window.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('themeToggle').textContent = '🌙';
-  });
-}
-
-// ────────── Helpers ──────────
-
+// ── Utilities ──
 function getUser() {
   const u = document.getElementById('username').value.trim();
-  if (!u) { alert('Please enter a username first.'); return null; }
+  if (!u) { toast('err', 'Please enter a Username first!'); return null; }
   return u;
 }
 
-function status(id, type, msg) {
+function toast(type, msg, duration) {
   const container = document.getElementById('toastContainer');
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.innerHTML = msg;
-  container.appendChild(toast);
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${msg}</span>`;
+  container.appendChild(el);
+  const ms = duration || (type === 'info' ? 1800 : 4500);
   setTimeout(() => {
-    toast.classList.add('hide');
-    setTimeout(() => toast.remove(), 300);
-  }, type === 'info' ? 1500 : 4000);
+    el.classList.add('hide');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }, ms);
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+function setLoading(btnId, loading, label) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.innerHTML = loading ? `<span class="spinner"></span> ${label || 'Working...'}` : label;
 }
 
 function switchTab(name, btn) {
@@ -396,275 +538,451 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'explorer') loadChain();
+  if (name === 'models')   loadMyModels();
 }
 
-// ────────── SHA-256 file hashing ──────────
-
-// Pure JS SHA-256 fallback for non-secure contexts (e.g. 0.0.0.0)
+// ── SHA-256 ──
 function sha256Fallback(buffer) {
-  const K = [
-    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
-  ];
-  const rr = (v,n) => (v>>>n)|(v<<(32-n));
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const rr=(v,n)=>(v>>>n)|(v<<(32-n));
   let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
-  const data = new Uint8Array(buffer);
-  const bitLen = data.length * 8;
-  const padded = new Uint8Array(((data.length+9+63)&~63));
-  padded.set(data); padded[data.length]=0x80;
-  const dv = new DataView(padded.buffer);
-  dv.setUint32(padded.length-4,bitLen,false);
-  for(let off=0;off<padded.length;off+=64){
-    const w=new Int32Array(64);
-    for(let i=0;i<16;i++) w[i]=dv.getInt32(off+i*4,false);
-    for(let i=16;i<64;i++){const s0=rr(w[i-15],7)^rr(w[i-15],18)^(w[i-15]>>>3);const s1=rr(w[i-2],17)^rr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0;}
-    let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;
-    for(let i=0;i<64;i++){const S1=rr(e,6)^rr(e,11)^rr(e,25);const ch=(e&f)^(~e&g);const t1=(h+S1+ch+K[i]+w[i])|0;const S0=rr(a,2)^rr(a,13)^rr(a,22);const mj=(a&b)^(a&c)^(b&c);const t2=(S0+mj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}
-    h0=(h0+a)|0;h1=(h1+b)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0;h5=(h5+f)|0;h6=(h6+g)|0;h7=(h7+h)|0;
-  }
+  const data=new Uint8Array(buffer),bitLen=data.length*8,padded=new Uint8Array(((data.length+9+63)&~63));
+  padded.set(data);padded[data.length]=0x80;const dv=new DataView(padded.buffer);dv.setUint32(padded.length-4,bitLen,false);
+  for(let off=0;off<padded.length;off+=64){const w=new Int32Array(64);for(let i=0;i<16;i++)w[i]=dv.getInt32(off+i*4,false);for(let i=16;i<64;i++){const s0=rr(w[i-15],7)^rr(w[i-15],18)^(w[i-15]>>>3);const s1=rr(w[i-2],17)^rr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0;}let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;for(let i=0;i<64;i++){const S1=rr(e,6)^rr(e,11)^rr(e,25);const ch=(e&f)^(~e&g);const t1=(h+S1+ch+K[i]+w[i])|0;const S0=rr(a,2)^rr(a,13)^rr(a,22);const mj=(a&b)^(a&c)^(b&c);const t2=(S0+mj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}h0=(h0+a)|0;h1=(h1+b)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0;h5=(h5+f)|0;h6=(h6+g)|0;h7=(h7+h)|0;}
   return [h0,h1,h2,h3,h4,h5,h6,h7].map(v=>(v>>>0).toString(16).padStart(8,'0')).join('');
 }
 
 async function computeHash(file) {
   const buf = await file.arrayBuffer();
-  // Use Web Crypto API if available (secure context), otherwise pure JS fallback
   if (window.crypto && window.crypto.subtle) {
     const hashBuf = await crypto.subtle.digest('SHA-256', buf);
-    return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
   }
   return sha256Fallback(buf);
 }
 
-async function onFile(section) {
-  const inputMap = { reg: 'regFile', ver: 'verFile', av: 'avFile' };
-  const file = document.getElementById(inputMap[section]).files[0];
+async function onFile(s) {
+  const inputMap = { reg:'regFile', ver:'verFile', av:'avFile' };
+  const file = document.getElementById(inputMap[s]).files[0];
   if (!file) return;
-  document.getElementById(section + 'FN').textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  document.getElementById(s+'FN').textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
   try {
     const hex = await computeHash(file);
-    hashes[section] = hex;
-    document.getElementById(section + 'HashWrap').style.display = 'block';
-    document.getElementById(section + 'Hash').textContent = hex;
-  } catch(e) { console.error('Hash error:', e); alert('Failed to compute hash: ' + e.message); }
+    hashes[s] = hex;
+    document.getElementById(s+'HashWrap').style.display = 'block';
+    document.getElementById(s+'Hash').textContent = hex;
+  } catch(e) { toast('err', 'Hash error: ' + e.message); }
 }
 
-// Drag-and-drop wiring
 ['reg','ver','av'].forEach(s => {
-  const drop = document.getElementById(s + 'Drop');
+  const drop = document.getElementById(s+'Drop');
   if (!drop) return;
   drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
   drop.addEventListener('drop', e => {
     e.preventDefault(); drop.classList.remove('dragover');
     const inputMap = { reg:'regFile', ver:'verFile', av:'avFile' };
-    document.getElementById(inputMap[s]).files = e.dataTransfer.files;
-    onFile(s);
+    const files = e.dataTransfer.files;
+    if (files.length) {
+      Object.defineProperty(document.getElementById(inputMap[s]), 'files', { value: files, writable: false, configurable: true });
+      onFile(s);
+    }
   });
 });
 
-// ────────── Stats ──────────
-
-async function loadStats() {
+// ── Stats ──
+async function refreshStats() {
   try {
     const r = await fetch(API + '/stats');
     const d = await r.json();
     document.getElementById('sModels').textContent = d.totalModels;
     document.getElementById('sVerify').textContent = d.totalVerifications;
     document.getElementById('sBlocks').textContent = d.totalBlocks;
-  } catch(e) { console.error('Stats error:', e); }
+  } catch(e) {
+    ['sModels','sVerify','sBlocks'].forEach(id => document.getElementById(id).textContent = '—');
+  }
 }
 
-// ────────── Register ──────────
-
+// ── Register ──
 async function registerModel() {
   const user = getUser(); if (!user) return;
   const name = document.getElementById('regName').value.trim();
   const meta = document.getElementById('regMeta').value.trim();
   const hash = hashes.reg;
-  if (!hash) { status('regStatus','err','Please upload a model file first.'); return; }
-  if (!name) { status('regStatus','err','Model name is required.'); return; }
+  if (!hash) { toast('err', 'Please upload a model file first.'); return; }
+  if (!name) { toast('err', 'Model name is required.'); return; }
 
+  setLoading('regBtn', true, 'Mining block...');
+  document.getElementById('regModelResult').innerHTML = '';
   try {
-    status('regStatus','info','<span class="spinner"></span> Mining block & registering...');
     const res = await fetch(API + '/register', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta, owner:user })
     });
     const d = await res.json();
     if (d.success) {
-      status('regStatus','ok',
-        `✅ Registered!<br><strong>Model ID:</strong> <code style="font-family:var(--mono);font-size:.78rem;">${d.modelId}</code><br><strong>Block #</strong>${d.blockIndex}<br><small>Save the Model ID for verification.</small>`);
-      document.getElementById('regName').value=''; document.getElementById('regMeta').value='';
-      document.getElementById('regFN').textContent=''; document.getElementById('regHashWrap').style.display='none'; hashes.reg=null;
-      loadStats();
-    } else { status('regStatus','err','❌ ' + d.error); }
-  } catch(e) { status('regStatus','err','❌ Network error: ' + e.message); }
+      navigator.clipboard.writeText(d.modelId).catch(() => {});
+      document.getElementById('regModelResult').innerHTML = `
+        <div class="model-id-box">
+          <label>✅ Model registered — ID copied to clipboard automatically</label>
+          <div class="id-row">
+            <code>${d.modelId}</code>
+            <button class="copy-btn" onclick="copyText('${d.modelId}', this)">Copy ID</button>
+          </div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Block #${d.blockIndex} · Owner: ${user}</div>
+        </div>`;
+      toast('ok', `Model "${name}" registered on Block #${d.blockIndex}`);
+      document.getElementById('regName').value = '';
+      document.getElementById('regMeta').value = '';
+      document.getElementById('regFN').textContent = '';
+      document.getElementById('regHashWrap').style.display = 'none';
+      hashes.reg = null;
+      refreshStats();
+    } else { toast('err', d.error); }
+  } catch(e) { toast('err', 'Network error: ' + e.message); }
+  finally { setLoading('regBtn', false, 'Register Model'); }
 }
 
-// ────────── Verify ──────────
-
+// ── Verify ──
 async function verifyModel() {
   const user = getUser(); if (!user) return;
   const modelId = document.getElementById('verModelId').value.trim();
   const hash = hashes.ver;
-  if (!hash) { status('verStatus','err','Please upload the model file.'); return; }
-  if (!modelId) { status('verStatus','err','Model ID is required.'); return; }
+  if (!hash)    { toast('err', 'Please upload the model file.'); return; }
+  if (!modelId) { toast('err', 'Model ID is required.'); return; }
 
+  setLoading('verBtn', true, 'Verifying...');
+  document.getElementById('verResult').innerHTML = '';
   try {
-    status('verStatus','info','<span class="spinner"></span> Verifying...');
     const res = await fetch(API + '/verify', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ modelId, providedHash:hash, verifier:user })
     });
     const d = await res.json();
-    if (!d.success) { status('verStatus','err','❌ ' + d.error); return; }
-
-    if (d.isValid) {
-      status('verStatus','ok','✅ <strong>INTEGRITY VERIFIED</strong> — hash matches the blockchain record.');
-    } else {
-      status('verStatus','err','❌ <strong>INTEGRITY MISMATCH</strong> — the model may have been tampered with.');
-    }
-
+    if (!d.success) { toast('err', d.error); return; }
+    const valid = d.isValid;
     document.getElementById('verResult').innerHTML = `
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.8rem;margin-top:.6rem;font-size:.82rem;">
-        <div style="margin-bottom:.3rem;"><strong style="color:var(--text-muted);">Stored Hash:</strong> <code style="font-family:var(--mono);font-size:.72rem;">${d.storedHash}</code></div>
-        <div><strong style="color:var(--text-muted);">Your Hash:</strong> <code style="font-family:var(--mono);font-size:.72rem;">${d.providedHash}</code></div>
+      <div class="verify-result ${valid ? 'valid' : 'invalid'}">
+        <div class="verify-result-header">${valid ? '✅ Integrity Verified' : '❌ Integrity Mismatch'}</div>
+        <div class="verify-result-body">
+          <div class="hash-compare-row">
+            <label>Stored Hash (on-chain)</label>
+            <code class="${valid ? 'hash-match' : 'hash-neutral'}">${d.storedHash}</code>
+          </div>
+          <div class="hash-compare-row">
+            <label>Your Hash (computed)</label>
+            <code class="${valid ? 'hash-match' : 'hash-nomatch'}">${d.providedHash}</code>
+          </div>
+          <div style="font-size:.78rem;color:var(--text-muted);">Block #${d.blockIndex} · Verifier: ${user}</div>
+        </div>
       </div>`;
-    loadStats();
-  } catch(e) { status('verStatus','err','❌ Network error: ' + e.message); }
+    refreshStats();
+  } catch(e) { toast('err', 'Network error: ' + e.message); }
+  finally { setLoading('verBtn', false, 'Verify Integrity'); }
 }
 
-// ────────── Version History ──────────
-
+// ── Version History ──
 async function loadVersions() {
   const id = document.getElementById('vhModelId').value.trim();
-  if (!id) return;
+  if (!id) { toast('err', 'Enter a Model ID.'); return; }
   try {
     const res = await fetch(API + '/versions/' + id);
     const d = await res.json();
-    if (!d.success) { document.getElementById('vhResult').innerHTML=`<div class="status show err">❌ ${d.error}</div>`; return; }
-    let h = `<p style="margin:.6rem 0 .3rem;color:var(--text-muted);font-size:.85rem;">Current version: <strong>${d.currentVersion}</strong></p>`;
-    h += '<table class="tbl"><tr><th>#</th><th>Hash</th><th>Changelog</th><th>Block</th></tr>';
+    if (!d.success) { toast('err', d.error); return; }
+    let h = `<p style="margin:.8rem 0;font-size:.88rem;">Current version: <strong>v${d.currentVersion}</strong></p>
+      <table class="tbl"><tr><th>#</th><th>Hash</th><th>Changelog</th><th>Block</th></tr>`;
     d.versions.forEach(v => {
-      h += `<tr><td>${v.version}</td><td><code style="font-family:var(--mono);font-size:.72rem;">${v.hash.substring(0,20)}…</code></td><td>${v.changelog}</td><td>${v.blockIndex||'-'}</td></tr>`;
+      h += `<tr>
+        <td><span class="badge badge-ok">v${v.version}</span></td>
+        <td><code style="font-family:var(--mono);font-size:.72rem;">${v.hash.substring(0,14)}…</code></td>
+        <td>${v.changelog}</td>
+        <td>#${v.blockIndex}</td>
+      </tr>`;
     });
-    h += '</table>';
-    document.getElementById('vhResult').innerHTML = h;
-  } catch(e) { document.getElementById('vhResult').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+    document.getElementById('vhResult').innerHTML = h + '</table>';
+  } catch(e) { toast('err', e.message); }
 }
 
 async function addVersion() {
   const user = getUser(); if (!user) return;
   const modelId = document.getElementById('avModelId').value.trim();
   const hash = hashes.av;
-  const log = document.getElementById('avLog').value.trim();
-  if (!modelId||!hash||!log) { status('avStatus','err','All fields are required.'); return; }
+  const log  = document.getElementById('avLog').value.trim();
+  if (!modelId || !hash || !log) { toast('err', 'All fields are required.'); return; }
 
+  setLoading('avBtn', true, 'Mining block...');
   try {
-    status('avStatus','info','<span class="spinner"></span> Mining block...');
     const res = await fetch(API + '/add-version', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ modelId, newHash:hash, changelog:log, owner:user })
     });
     const d = await res.json();
-    if (d.success) {
-      status('avStatus','ok',`✅ Version ${d.version} added (Block #${d.blockIndex})`);
-      document.getElementById('avLog').value=''; document.getElementById('avFN').textContent='';
-      document.getElementById('avHashWrap').style.display='none'; hashes.av=null;
-      loadStats();
-    } else { status('avStatus','err','❌ ' + d.error); }
-  } catch(e) { status('avStatus','err','❌ ' + e.message); }
+    if (d.success) { toast('ok', `Version ${d.version} added on Block #${d.blockIndex}`); refreshStats(); }
+    else toast('err', d.error);
+  } catch(e) { toast('err', e.message); }
+  finally { setLoading('avBtn', false, 'Add Version'); }
 }
 
-// ────────── Audit Trail ──────────
-
+// ── Audit Trail ──
 async function loadAudit() {
   const id = document.getElementById('auditId').value.trim();
-  if (!id) return;
+  if (!id) { toast('err', 'Enter a Model ID.'); return; }
   try {
     const res = await fetch(API + '/audit/' + id);
     const d = await res.json();
-    if (!d.success) { document.getElementById('auditResult').innerHTML=`<div class="status show err">❌ ${d.error}</div>`; return; }
-    if (d.count === 0) { document.getElementById('auditResult').innerHTML='<p style="color:var(--text-muted);margin-top:.6rem;">No verifications yet.</p>'; return; }
-    let h = '<table class="tbl"><tr><th>Verifier</th><th>Hash Provided</th><th>Result</th><th>Block</th></tr>';
+    if (!d.success) { toast('err', d.error); return; }
+    if (d.count === 0) {
+      document.getElementById('auditResult').innerHTML = `
+        <div class="empty-state"><span class="empty-icon">🔍</span><p>No verifications recorded yet.</p></div>`;
+      return;
+    }
+    let h = '<table class="tbl"><tr><th>Verifier</th><th>Result</th><th>Hash Provided</th><th>Block</th><th>Time</th></tr>';
     d.verifications.forEach(v => {
-      h += `<tr><td>${v.verifier}</td><td><code style="font-family:var(--mono);font-size:.72rem;">${v.providedHash.substring(0,16)}…</code></td>
-        <td>${v.isValid?'<span class="badge badge-ok">Valid</span>':'<span class="badge badge-err">Invalid</span>'}</td><td>${v.blockIndex}</td></tr>`;
+      const t = v.timestamp ? new Date(v.timestamp * 1000).toLocaleString() : '—';
+      h += `<tr>
+        <td><strong>${v.verifier}</strong></td>
+        <td>${v.isValid ? '<span class="badge badge-ok">Valid</span>' : '<span class="badge badge-err">Invalid</span>'}</td>
+        <td><code style="font-family:var(--mono);font-size:.72rem;">${v.providedHash ? v.providedHash.substring(0,14)+'…' : '—'}</code></td>
+        <td>#${v.blockIndex || '—'}</td>
+        <td style="font-size:.78rem;color:var(--text-muted);">${t}</td>
+      </tr>`;
     });
-    h += '</table>';
-    document.getElementById('auditResult').innerHTML = h;
-  } catch(e) { document.getElementById('auditResult').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+    document.getElementById('auditResult').innerHTML = h + '</table>';
+  } catch(e) { toast('err', e.message); }
 }
 
-// ────────── My Models ──────────
-
+// ── My Models ──
 async function loadMyModels() {
   const user = getUser(); if (!user) return;
+  document.getElementById('modelSearch').value = '';
+  document.getElementById('modelsResult').innerHTML = `
+    <div style="padding:1rem 0;">
+      <div class="skeleton" style="width:100%;height:80px;border-radius:12px;margin-bottom:.8rem;"></div>
+      <div class="skeleton" style="width:100%;height:80px;border-radius:12px;"></div>
+    </div>`;
   try {
     const res = await fetch(API + '/models/' + user);
     const d = await res.json();
-    if (d.count === 0) { document.getElementById('modelsResult').innerHTML='<p style="color:var(--text-muted);">No models registered yet.</p>'; return; }
-    let h = '<table class="tbl"><tr><th>Model ID</th><th>Name</th><th>Hash</th><th>Version</th><th>Block</th></tr>';
-    d.models.forEach(m => {
-      h += `<tr><td><code style="font-family:var(--mono);font-size:.72rem;">${m.modelId}</code></td><td>${m.modelName}</td>
-        <td><code style="font-family:var(--mono);font-size:.72rem;">${m.modelHash.substring(0,16)}…</code></td><td>${m.currentVersion}</td><td>${m.blockIndex}</td></tr>`;
-    });
-    h += '</table>';
-    document.getElementById('modelsResult').innerHTML = h;
-  } catch(e) { document.getElementById('modelsResult').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+    _allModels = d.models || [];
+    renderModels(_allModels);
+  } catch(e) { toast('err', e.message); document.getElementById('modelsResult').innerHTML = ''; }
 }
 
-// ────────── Blockchain Explorer ──────────
+function filterModels() {
+  const q = document.getElementById('modelSearch').value.toLowerCase();
+  const filtered = _allModels.filter(m =>
+    m.modelName.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q)
+  );
+  renderModels(filtered, q);
+}
+
+function renderModels(models, query) {
+  const user = document.getElementById('username').value.trim();
+  if (models.length === 0) {
+    const msg = query
+      ? `No models match "<strong>${query}</strong>".`
+      : `No models registered yet under <strong>${user}</strong>.`;
+    document.getElementById('modelsResult').innerHTML = `
+      <div class="empty-state">
+        <span class="empty-icon">📦</span><p>${msg}</p>
+        ${!query ? `<button class="btn" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">Register your first model</button>` : ''}
+      </div>`;
+    return;
+  }
+  let h = `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:.6rem;">${models.length} model${models.length !== 1 ? 's' : ''} found</div>`;
+  h += '<div class="model-grid">';
+  models.forEach(m => {
+    const statusBadge = m.isActive
+      ? '<span class="badge badge-ok">Active</span>'
+      : '<span class="badge badge-err">Deactivated</span>';
+    h += `<div class="model-item">
+      <div class="model-item-name">${m.modelName} ${statusBadge} <span class="badge badge-warn">v${m.currentVersion}</span></div>
+      <div class="model-item-id">
+        <code>${m.modelId}</code>
+        <button class="copy-btn" onclick="copyText('${m.modelId}', this)" style="flex-shrink:0;">Copy ID</button>
+      </div>
+      <div class="model-item-meta">
+        <span>Block #${m.blockIndex}</span>
+        <span>${new Date(m.registeredAt * 1000).toLocaleDateString()}</span>
+      </div>
+      <div class="model-item-actions">
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVerify('${m.modelId}')">Verify</button>
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')">Add Version</button>
+        ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')">Deactivate</button>` : ''}
+      </div>
+    </div>`;
+  });
+  document.getElementById('modelsResult').innerHTML = h + '</div>';
+}
+
+function prefillVerify(modelId) {
+  document.getElementById('verModelId').value = modelId;
+  switchTab('verify', document.querySelectorAll('.tab')[1]);
+}
+function prefillVersion(modelId) {
+  document.getElementById('avModelId').value = modelId;
+  switchTab('versions', document.querySelectorAll('.tab')[2]);
+}
+
+async function deactivateModel(modelId) {
+  const user = getUser(); if (!user) return;
+  if (!confirm('Deactivate this model? It will no longer be verifiable.')) return;
+  try {
+    const res = await fetch(API + '/deactivate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ modelId, owner:user })
+    });
+    const d = await res.json();
+    if (d.success) { toast('ok', 'Model deactivated.'); loadMyModels(); }
+    else toast('err', d.error);
+  } catch(e) { toast('err', e.message); }
+}
+
+// ── Blockchain Explorer ──
+function toggleTxns(btn) {
+  const body = btn.nextElementSibling;
+  const open = body.classList.toggle('open');
+  btn.querySelector('.bc-txns-arrow').textContent = open ? '▲' : '▼';
+}
+
+function renderBlockCard(b) {
+  const isGenesis = b.index === 0;
+  const ts = new Date(b.timestamp * 1000).toLocaleString();
+  const hashShort = b.hash.substring(0, 20) + '…';
+  const prevShort = isGenesis ? '(origin)' : b.previous_hash.substring(0, 16) + '…';
+  return `<div class="block-card${isGenesis ? ' genesis' : ''}">
+    <div class="bc-hdr">
+      <div class="bc-index">Block #${b.index}<span class="bc-index-badge">${isGenesis ? 'Genesis' : 'Block'}</span></div>
+      <div class="bc-time">${ts}</div>
+    </div>
+    <div class="bc-body">
+      <div class="bc-field">
+        <div class="bc-field-label">Hash</div>
+        <div class="bc-hash-val">
+          <span title="${b.hash}">${hashShort}</span>
+          <button class="bc-copy" onclick="copyText('${b.hash}', this)" title="Copy full hash">⧉</button>
+        </div>
+      </div>
+      <div class="bc-field">
+        <div class="bc-field-label">Previous Hash</div>
+        <div class="bc-hash-val" style="color:var(--text-muted);">
+          <span title="${b.previous_hash}">${prevShort}</span>
+        </div>
+      </div>
+    </div>
+    <div class="bc-stats">
+      <div class="bc-stat"><div class="bc-stat-val">${b.nonce.toLocaleString()}</div><div class="bc-stat-lbl">Nonce</div></div>
+      <div class="bc-stat"><div class="bc-stat-val">${b.transactions.length}</div><div class="bc-stat-lbl">Transaction${b.transactions.length !== 1 ? 's' : ''}</div></div>
+    </div>
+    <div class="bc-txns">
+      <button class="bc-txns-toggle" onclick="toggleTxns(this)">
+        View Transactions <span class="bc-txns-arrow">▼</span>
+      </button>
+      <div class="bc-txns-body"><pre>${JSON.stringify(b.transactions, null, 2)}</pre></div>
+    </div>
+  </div>`;
+}
+
+function renderChainPage() {
+  const start = _currentPage * BLOCKS_PER_PAGE;
+  const pageBlocks = _allBlocks.slice(start, start + BLOCKS_PER_PAGE);
+  const totalPages = Math.ceil(_allBlocks.length / BLOCKS_PER_PAGE);
+
+  let h = '<div class="chain-wrapper"><div class="chain-container">';
+  pageBlocks.forEach((b, i) => {
+    h += renderBlockCard(b);
+    if (i < pageBlocks.length - 1) {
+      h += `<div class="chain-connector">
+        <svg viewBox="0 0 60 20" xmlns="http://www.w3.org/2000/svg">
+          <defs><marker id="arr${start+i}" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--primary)"/></marker></defs>
+          <line x1="0" y1="10" x2="54" y2="10" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#arr${start+i})" style="animation:dashAnim 1.2s linear infinite;"/>
+        </svg>
+      </div><style>@keyframes dashAnim{to{stroke-dashoffset:-20;}}</style>`;
+    }
+  });
+  document.getElementById('chainView').innerHTML = h + '</div></div>';
+
+  const pager = document.getElementById('chainPager');
+  if (totalPages > 1) {
+    pager.style.display = 'flex';
+    document.getElementById('pgLabel').textContent = `Page ${_currentPage + 1} of ${totalPages}  ·  ${_allBlocks.length} blocks total`;
+    document.getElementById('pgPrev').disabled = _currentPage === 0;
+    document.getElementById('pgNext').disabled = _currentPage >= totalPages - 1;
+  } else {
+    pager.style.display = 'none';
+  }
+}
+
+function changePage(dir) {
+  const totalPages = Math.ceil(_allBlocks.length / BLOCKS_PER_PAGE);
+  _currentPage = Math.max(0, Math.min(_currentPage + dir, totalPages - 1));
+  renderChainPage();
+  document.getElementById('chainView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 async function loadChain() {
+  _currentPage = 0;
+  document.getElementById('chainView').innerHTML = `
+    <div style="display:flex;gap:60px;padding:1rem;overflow-x:auto;">
+      <div class="block-card skeleton" style="height:260px;"></div>
+      <div class="block-card skeleton" style="height:260px;opacity:.6;"></div>
+    </div>`;
+  document.getElementById('chainPager').style.display = 'none';
   try {
     const res = await fetch(API + '/chain');
     const d = await res.json();
-    if (!d.success) return;
-    let h = `<p style="color:var(--text-muted);margin-bottom:.6rem;">Showing <strong>${d.length}</strong> blocks</p><div class="chain-container">`;
-    d.chain.forEach((b, i) => {
-      const date = new Date(b.timestamp * 1000).toLocaleString();
-      h += `<div class="block-card">
-        <div class="block-hdr"><strong>Block #${b.index}</strong><span>${date}</span></div>
-        <div class="block-row"><strong>Hash: </strong><code>${b.hash}</code></div>
-        <div class="block-row"><strong>Prev Hash: </strong><code>${b.previous_hash}</code></div>
-        <div class="block-row"><strong>Nonce: </strong><span style="color:var(--text)">${b.nonce.toLocaleString()}</span> &nbsp;|&nbsp; <strong>Txns: </strong><span style="color:var(--text)">${b.transactions.length}</span></div>
-        <details><summary>View Transactions</summary><pre>${JSON.stringify(b.transactions,null,2)}</pre></details>
-      </div>`;
-      if (i < d.chain.length - 1) {
-        h += `<div class="chain-arrow">➡</div>`;
-      }
-    });
-    h += '</div>';
-    document.getElementById('chainView').innerHTML = h;
-  } catch(e) { status('toastContainer', 'err', '❌ ' + e.message); }
+    if (!d.success || !d.chain.length) {
+      document.getElementById('chainView').innerHTML = `
+        <div class="empty-state"><span class="empty-icon">🔗</span><p>No blocks yet.</p></div>`;
+      return;
+    }
+    _allBlocks = d.chain;
+    renderChainPage();
+  } catch(e) {
+    toast('err', e.message);
+    document.getElementById('chainView').innerHTML = '';
+  }
 }
 
 async function validateChain() {
+  setLoading('validateBtn', true, 'Validating...');
   try {
     const res = await fetch(API + '/chain/validate');
     const d = await res.json();
-    let h = d.isValid
-      ? '<div class="status show ok">✅ Blockchain is valid — all blocks pass integrity checks.</div>'
-      : '<div class="status show err">❌ Blockchain has integrity errors!</div>';
-    if (d.errors && d.errors.length) {
-      h += '<ul style="margin-top:.5rem;padding-left:1.2rem;font-size:.85rem;color:var(--danger);">';
-      d.errors.forEach(e => h += `<li>${e}</li>`);
-      h += '</ul>';
+    const el = document.getElementById('chainValid');
+    if (d.isValid) {
+      el.innerHTML = `<div style="background:rgba(0,206,201,0.1);border:1px solid rgba(0,206,201,0.3);border-radius:10px;padding:.8rem 1.1rem;color:var(--success);font-weight:600;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;">✅ Blockchain is valid — all blocks pass integrity checks.</div>`;
+    } else {
+      let errHtml = d.errors.map(e => `<li>${e}</li>`).join('');
+      el.innerHTML = `<div style="background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:10px;padding:.8rem 1.1rem;color:var(--danger);font-weight:600;margin-bottom:.5rem;">
+        ❌ Integrity errors detected:<ul style="margin-top:.5rem;padding-left:1.2rem;font-size:.85rem;font-weight:400;">${errHtml}</ul></div>`;
     }
-    document.getElementById('chainValid').innerHTML = h;
-  } catch(e) { document.getElementById('chainValid').innerHTML=`<div class="status show err">❌ ${e.message}</div>`; }
+  } catch(e) { toast('err', e.message); }
+  finally { setLoading('validateBtn', false, 'Validate Chain Integrity'); }
 }
 
-// ────────── Init ──────────
-loadStats();
-setInterval(loadStats, 5000);
+// ── Theme ──
+function initTheme() {
+  if (localStorage.getItem('blockverify_theme') === 'light') {
+    document.body.classList.add('light-theme');
+    document.getElementById('themeToggle').innerText = '🌙';
+  }
+}
+function toggleTheme() {
+  const body = document.body, btn = document.getElementById('themeToggle');
+  if (body.classList.contains('light-theme')) {
+    body.classList.remove('light-theme'); btn.innerText = '☀️';
+    localStorage.setItem('blockverify_theme', 'dark');
+  } else {
+    body.classList.add('light-theme'); btn.innerText = '🌙';
+    localStorage.setItem('blockverify_theme', 'light');
+  }
+}
+
+refreshStats();
+initTheme();
+setInterval(refreshStats, 5000);
 </script>
 </body>
 </html>
