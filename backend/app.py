@@ -170,6 +170,8 @@ def register_model():
 
         blockchain.add_transaction(tx)
         new_block = blockchain.mine_pending_transactions()
+        if new_block is None:
+            return jsonify({"success": False, "error": "Mining failed: no pending transactions"}), 500
 
         models_registry[model_id] = {
             "modelId": model_id,
@@ -245,6 +247,8 @@ def verify_model():
 
         blockchain.add_transaction(tx)
         new_block = blockchain.mine_pending_transactions()
+        if new_block is None:
+            return jsonify({"success": False, "error": "Mining failed: no pending transactions"}), 500
 
         verification_logs[data["modelId"]].append(
             {
@@ -318,6 +322,8 @@ def add_version():
 
         blockchain.add_transaction(tx)
         new_block = blockchain.mine_pending_transactions()
+        if new_block is None:
+            return jsonify({"success": False, "error": "Mining failed: no pending transactions"}), 500
 
         model["modelHash"] = data["newHash"]
         model["currentVersion"] = new_ver
@@ -352,6 +358,17 @@ def deactivate_model():
     """Soft-delete (deactivate) a model."""
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "Request body required"}), 400
+        if not data.get("modelId"):
+            return jsonify({"success": False, "error": "modelId is required"}), 400
+        if not data.get("owner"):
+            return jsonify({"success": False, "error": "owner is required"}), 400
+
+        allowed, err = check_rate_limit(data["owner"])
+        if not allowed:
+            return jsonify({"success": False, "error": err}), 429
+
         model = models_registry.get(data.get("modelId"))
         if not model:
             return jsonify({"success": False, "error": "Model not found"}), 404

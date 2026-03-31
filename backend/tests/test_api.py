@@ -11,17 +11,18 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import app, blockchain, models_registry, verification_logs
+from app import app, blockchain, models_registry, verification_logs, _rate_log
 
 
 # Reset all state before each test so tests don't interfere with each other
 @pytest.fixture(autouse=True)
 def reset_state():
-    """Reset the blockchain and registries before each test."""
+    """Reset the blockchain, registries, and rate-limit log before each test."""
     blockchain.chain = [blockchain._create_genesis_block()]
     blockchain.pending_transactions = []
     models_registry.clear()
     verification_logs.clear()
+    _rate_log.clear()
     yield
 
 
