@@ -519,7 +519,10 @@
     <div class="card">
       <h2>🔍 Verification Audit Trail</h2>
       <div class="fg"><label>Model ID</label><input type="text" id="auditId" placeholder="Model ID"></div>
-      <button class="btn btn-sec" onclick="loadAudit()">Load Audit Trail</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+        <button class="btn btn-sec" onclick="loadAudit()">Load Audit Trail</button>
+        <button class="btn" id="exportCsvBtn" onclick="exportAuditCSV()" style="display:none;">⬇ Download CSV</button>
+      </div>
       <div id="auditResult"></div>
     </div>
   </div>
@@ -851,6 +854,7 @@ async function loadAudit() {
     const d = await res.json();
     if (!d.success) { toast('err', d.error); return; }
     if (d.count === 0) {
+      document.getElementById('exportCsvBtn').style.display = 'none';
       document.getElementById('auditResult').innerHTML = `
         <div class="empty-state"><span class="empty-icon">🔍</span><p>No verifications recorded yet.</p></div>`;
       return;
@@ -867,7 +871,24 @@ async function loadAudit() {
       </tr>`;
     });
     document.getElementById('auditResult').innerHTML = h + '</table>';
+    document.getElementById('exportCsvBtn').style.display = 'inline-flex';
   } catch(e) { toast('err', e.message); }
+}
+
+async function exportAuditCSV() {
+  const id = document.getElementById('auditId').value.trim();
+  if (!id) { toast('err', 'Enter a Model ID first.'); return; }
+  try {
+    const res = await fetch(API + '/audit/' + id + '/export');
+    if (!res.ok) { toast('err', 'Export failed.'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `audit_${id.substring(0,8)}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    toast('ok', 'Audit log downloaded as CSV.');
+  } catch(e) { toast('err', 'Download error: ' + e.message); }
 }
 
 // ── My Models ──
