@@ -157,9 +157,15 @@ class Blockchain:
             previous_hash=self.get_latest_block().hash,
         )
 
-        new_block.mine_block(self.difficulty)
+        t_start = time()
+        attempts = new_block.mine_block(self.difficulty)
+        mining_time = round(time() - t_start, 3)
+
         self.chain.append(new_block)
         self.pending_transactions = []
+
+        new_block.mining_time = mining_time
+        new_block.attempts = attempts
 
         return new_block
 

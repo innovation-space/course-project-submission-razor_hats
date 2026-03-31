@@ -419,6 +419,53 @@ def search_models():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/tamper-demo", methods=["POST"])
+def tamper_demo():
+    """
+    Non-destructive tamper simulation.
+
+    Temporarily mutates block 1 (first real block after genesis), runs
+    chain validation to capture the detected errors, then restores the
+    block to its original state and re-validates to confirm restoration.
+
+    Returns a JSON report showing before/after validation results.
+    """
+    if len(blockchain.chain) < 2:
+        return jsonify({
+            "success": False,
+            "error": "Need at least 2 blocks to run a tamper demo. Register a model first.",
+        }), 400
+
+    target = blockchain.chain[1]
+
+    # Save originals
+    original_transactions = [tx.copy() for tx in target.transactions]
+    original_hash = target.hash
+
+    # --- TAMPER ---
+    target.transactions[0]["__TAMPERED__"] = "SIMULATED ATTACK INJECTED"
+    tampered_result = blockchain.is_chain_valid()
+
+    # --- RESTORE ---
+    target.transactions = original_transactions
+    target.hash = original_hash
+    restored_result = blockchain.is_chain_valid()
+
+    return jsonify({
+        "success": True,
+        "targetBlock": target.index,
+        "tampered": {
+            "isValid": tampered_result["valid"],
+            "errors": tampered_result["errors"],
+        },
+        "restored": {
+            "isValid": restored_result["valid"],
+            "errors": restored_result["errors"],
+        },
+        "message": "Tamper simulation complete — blockchain detected the attack and was restored.",
+    }), 200
+
+
 @app.route("/api/stats", methods=["GET"])
 def get_stats():
     """Return high-level platform statistics."""
