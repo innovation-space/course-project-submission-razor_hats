@@ -1076,6 +1076,8 @@ function changePage(dir) {
 
 async function loadChain() {
   _currentPage = 0;
+  document.getElementById('tamperResult').innerHTML = '';
+  document.getElementById('chainValid').innerHTML = '';
   document.getElementById('chainView').innerHTML = `
     <div style="display:flex;gap:60px;padding:1rem;overflow-x:auto;">
       <div class="block-card skeleton" style="height:260px;"></div>
