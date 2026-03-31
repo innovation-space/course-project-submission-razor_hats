@@ -14,9 +14,10 @@ Author: razor_hats team
 
 import os
 import json
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from blockchain import Blockchain, Block
+from auth import auth_bp, require_auth
 from time import time
 import hashlib
 
@@ -26,6 +27,7 @@ import hashlib
 
 app = Flask(__name__)
 CORS(app)
+app.register_blueprint(auth_bp)
 
 # Persistence file paths
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -138,25 +140,23 @@ def generate_model_id(model_name, model_hash, owner):
 # ------------------------------------------------------------------ #
 
 @app.route("/api/register", methods=["POST"])
+@require_auth
 def register_model():
     """Register a new AI model on the blockchain."""
     try:
         data = request.get_json()
+        owner = g.user   # comes from the verified JWT — cannot be spoofed
 
         if not data.get("modelName"):
             return jsonify({"success": False, "error": "Model name is required"}), 400
         if not data.get("modelHash"):
             return jsonify({"success": False, "error": "Model hash is required"}), 400
-        if not data.get("owner"):
-            return jsonify({"success": False, "error": "Owner is required"}), 400
 
-        allowed, err = check_rate_limit(data["owner"])
+        allowed, err = check_rate_limit(owner)
         if not allowed:
             return jsonify({"success": False, "error": err}), 429
 
-        model_id = generate_model_id(
-            data["modelName"], data["modelHash"], data["owner"]
-        )
+        model_id = generate_model_id(data["modelName"], data["modelHash"], owner)
 
         tx = {
             "type": "register",
@@ -164,7 +164,7 @@ def register_model():
             "modelName": data["modelName"],
             "modelHash": data["modelHash"],
             "metadata": data.get("metadata", ""),
-            "owner": data["owner"],
+            "owner": owner,
             "timestamp": time(),
         }
 
@@ -178,7 +178,7 @@ def register_model():
             "modelName": data["modelName"],
             "modelHash": data["modelHash"],
             "metadata": data.get("metadata", ""),
-            "owner": data["owner"],
+            "owner": owner,
             "registeredAt": tx["timestamp"],
             "blockIndex": new_block.index,
             "currentVersion": 1,
@@ -212,17 +212,18 @@ def register_model():
 
 
 @app.route("/api/verify", methods=["POST"])
+@require_auth
 def verify_model():
     """Verify AI model integrity against the stored hash."""
     try:
         data = request.get_json()
+        verifier = g.user   # JWT-authenticated username
 
         if not data.get("modelId"):
             return jsonify({"success": False, "error": "Model ID is required"}), 400
         if not data.get("providedHash"):
             return jsonify({"success": False, "error": "Hash is required"}), 400
 
-        verifier = data.get("verifier", "anonymous")
         allowed, err = check_rate_limit(verifier)
         if not allowed:
             return jsonify({"success": False, "error": err}), 429
@@ -241,7 +242,7 @@ def verify_model():
             "providedHash": data["providedHash"],
             "storedHash": model["modelHash"],
             "isValid": is_valid,
-            "verifier": data.get("verifier", "anonymous"),
+            "verifier": verifier,
             "timestamp": time(),
         }
 
@@ -281,10 +282,12 @@ def verify_model():
 
 
 @app.route("/api/add-version", methods=["POST"])
+@require_auth
 def add_version():
     """Add a new version to an existing model."""
     try:
         data = request.get_json()
+        owner = g.user
 
         if not data.get("modelId"):
             return jsonify({"success": False, "error": "Model ID is required"}), 400
@@ -292,17 +295,15 @@ def add_version():
             return jsonify({"success": False, "error": "New hash is required"}), 400
         if not data.get("changelog"):
             return jsonify({"success": False, "error": "Changelog is required"}), 400
-        if not data.get("owner"):
-            return jsonify({"success": False, "error": "Owner is required"}), 400
 
-        allowed, err = check_rate_limit(data["owner"])
+        allowed, err = check_rate_limit(owner)
         if not allowed:
             return jsonify({"success": False, "error": err}), 429
 
         model = models_registry.get(data["modelId"])
         if not model:
             return jsonify({"success": False, "error": "Model not found"}), 404
-        if model["owner"] != data["owner"]:
+        if model["owner"] != owner:
             return jsonify({"success": False, "error": "Only the model owner can add versions"}), 403
         if not model["isActive"]:
             return jsonify({"success": False, "error": "Model is deactivated"}), 400
@@ -316,7 +317,7 @@ def add_version():
             "newHash": data["newHash"],
             "previousHash": model["modelHash"],
             "changelog": data["changelog"],
-            "owner": data["owner"],
+            "owner": owner,
             "timestamp": time(),
         }
 
@@ -354,30 +355,29 @@ def add_version():
 
 
 @app.route("/api/deactivate", methods=["POST"])
+@require_auth
 def deactivate_model():
     """Soft-delete (deactivate) a model."""
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"success": False, "error": "Request body required"}), 400
-        if not data.get("modelId"):
-            return jsonify({"success": False, "error": "modelId is required"}), 400
-        if not data.get("owner"):
-            return jsonify({"success": False, "error": "owner is required"}), 400
+        owner = g.user
 
-        allowed, err = check_rate_limit(data["owner"])
+        if not data or not data.get("modelId"):
+            return jsonify({"success": False, "error": "modelId is required"}), 400
+
+        allowed, err = check_rate_limit(owner)
         if not allowed:
             return jsonify({"success": False, "error": err}), 429
 
-        model = models_registry.get(data.get("modelId"))
+        model = models_registry.get(data["modelId"])
         if not model:
             return jsonify({"success": False, "error": "Model not found"}), 404
-        if model["owner"] != data.get("owner"):
+        if model["owner"] != owner:
             return jsonify({"success": False, "error": "Only the owner can deactivate"}), 403
 
         model["isActive"] = False
 
-        tx = {"type": "deactivate", "modelId": data["modelId"], "owner": data["owner"], "timestamp": time()}
+        tx = {"type": "deactivate", "modelId": data["modelId"], "owner": owner, "timestamp": time()}
         blockchain.add_transaction(tx)
         blockchain.mine_pending_transactions()
         save_state()

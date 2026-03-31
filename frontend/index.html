@@ -45,14 +45,80 @@
       border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
       box-shadow: 0 0 15px rgba(108,92,231,0.4);
     }
+    /* ── Auth user pill in header ── */
     .user-box { display: flex; align-items: center; gap: .6rem; }
-    .user-box label { font-size: .85rem; color: var(--text-muted); font-weight: 500; }
-    .user-box input {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-      padding: .5rem .8rem; color: var(--text); font-family: var(--font); font-size: .9rem;
-      width: 160px; transition: all 0.2s;
+    .user-pill {
+      display: flex; align-items: center; gap: .55rem;
+      background: rgba(108,92,231,0.15); border: 1px solid rgba(108,92,231,0.35);
+      border-radius: 20px; padding: .3rem .7rem .3rem .45rem;
+      font-size: .88rem; font-weight: 600; color: var(--text);
     }
-    .user-box input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(108,92,231,0.2); }
+    .user-pill .avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--success));
+      display: flex; align-items: center; justify-content: center;
+      font-size: .75rem; font-weight: 800; color: #fff; flex-shrink: 0;
+    }
+    .btn-logout {
+      background: transparent; border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; padding: .3rem .65rem; color: var(--text-muted);
+      cursor: pointer; font-size: .8rem; transition: all .2s;
+    }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); background: rgba(255,107,107,0.08); }
+    .btn-login-header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-h));
+      border: none; border-radius: 8px; padding: .4rem 1rem;
+      color: #fff; font-size: .88rem; font-weight: 700; cursor: pointer;
+      transition: all .2s; box-shadow: 0 2px 10px rgba(108,92,231,0.3);
+    }
+    .btn-login-header:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(108,92,231,0.5); }
+
+    /* ── Auth Modal ── */
+    .auth-overlay {
+      display: none; position: fixed; inset: 0; z-index: 3000;
+      background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center; padding: 1rem;
+    }
+    .auth-overlay.open { display: flex; animation: fadeIn .2s ease; }
+    .auth-box {
+      background: linear-gradient(160deg, rgba(18,24,42,0.99) 0%, rgba(10,14,24,1) 100%);
+      border: 1px solid rgba(108,92,231,0.3); border-radius: 24px;
+      width: 100%; max-width: 440px; padding: 2rem 2rem 1.8rem;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 60px rgba(108,92,231,0.15);
+      animation: slideUpFade .25s ease;
+    }
+    .auth-logo { font-size: 2rem; text-align: center; margin-bottom: .3rem; }
+    .auth-title { font-size: 1.4rem; font-weight: 800; text-align: center; margin-bottom: .25rem; }
+    .auth-sub { text-align: center; color: var(--text-muted); font-size: .83rem; margin-bottom: 1.4rem; }
+    .auth-tabs { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.4rem; }
+    .auth-tab {
+      flex: 1; padding: .55rem; text-align: center; cursor: pointer;
+      font-size: .88rem; font-weight: 700; border: none; background: transparent;
+      color: var(--text-muted); transition: all .2s;
+    }
+    .auth-tab.active { background: var(--primary); color: #fff; }
+    .auth-form { display: none; flex-direction: column; gap: .85rem; }
+    .auth-form.active { display: flex; }
+    .auth-field { display: flex; flex-direction: column; gap: .3rem; }
+    .auth-field label { font-size: .8rem; font-weight: 600; color: var(--text-muted); }
+    .auth-field input {
+      padding: .75rem 1rem; border-radius: 10px; font-size: .95rem;
+      background: rgba(255,255,255,0.06); border: 1.5px solid var(--border);
+      color: var(--text); outline: none; transition: border-color .2s;
+      font-family: var(--font);
+    }
+    .auth-field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(108,92,231,0.2); }
+    .auth-submit {
+      margin-top: .2rem; padding: .8rem; border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--primary), var(--primary-h));
+      color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: all .2s; box-shadow: 0 4px 15px rgba(108,92,231,0.35);
+    }
+    .auth-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(108,92,231,0.55); }
+    .auth-submit:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+    .auth-err { background: rgba(255,107,107,0.12); border: 1px solid rgba(255,107,107,0.3); border-radius: 8px; padding: .6rem .85rem; font-size: .82rem; color: var(--danger); display: none; }
+    .auth-err.show { display: block; }
+    .auth-divider { text-align: center; font-size: .75rem; color: var(--text-muted); }
 
     .app { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
 
@@ -479,10 +545,20 @@
     <span>BlockVerify</span>
   </div>
   <div class="user-box">
-    <label>Username:</label>
-    <input type="text" id="username" placeholder="e.g. alice" />
-    <button onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;margin-left:8px;outline:none;transition:transform 0.2s;" id="themeToggle" title="Toggle theme" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">☀️</button>
-    <button onclick="showWelcome()" title="Quick start guide" style="background:rgba(108,92,231,0.15);border:1px solid rgba(108,92,231,0.3);color:var(--primary);border-radius:8px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem;font-weight:700;margin-left:6px;">❓ Help</button>
+    <!-- Shown when logged OUT -->
+    <div id="headerLoggedOut">
+      <button class="btn-login-header" onclick="openAuthModal('login')">🔐 Login / Register</button>
+    </div>
+    <!-- Shown when logged IN -->
+    <div id="headerLoggedIn" style="display:none;align-items:center;gap:.5rem;">
+      <div class="user-pill">
+        <div class="avatar" id="userAvatar">?</div>
+        <span id="userLabel">—</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+      <button onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;outline:none;transition:transform 0.2s;" id="themeToggle" title="Toggle theme" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">☀️</button>
+      <button onclick="showWelcome()" title="Quick start guide" style="background:rgba(108,92,231,0.15);border:1px solid rgba(108,92,231,0.3);color:var(--primary);border-radius:8px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem;font-weight:700;">❓ Help</button>
+    </div>
   </div>
 </header>
 
@@ -764,6 +840,53 @@
   </div>
 </div>
 
+<!-- Auth Modal -->
+<div class="auth-overlay" id="authModal">
+  <div class="auth-box">
+    <div class="auth-logo">🔐</div>
+    <div class="auth-title" id="authModalTitle">Welcome Back</div>
+    <div class="auth-sub" id="authModalSub">Sign in to register and verify AI models on the blockchain.</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="authTabLogin" onclick="switchAuthTab('login')">Login</button>
+      <button class="auth-tab" id="authTabRegister" onclick="switchAuthTab('register')">Register</button>
+    </div>
+
+    <!-- Login form -->
+    <form class="auth-form active" id="authFormLogin" onsubmit="event.preventDefault();doLogin()">
+      <div class="auth-field">
+        <label>Username</label>
+        <input type="text" id="loginUsername" placeholder="your username" autocomplete="username" />
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <div class="auth-err" id="loginErr"></div>
+      <button class="auth-submit" id="loginBtn" type="submit">Login →</button>
+      <div class="auth-divider">Don't have an account? <a href="#" style="color:var(--primary);" onclick="event.preventDefault();switchAuthTab('register')">Register here</a></div>
+    </form>
+
+    <!-- Register form -->
+    <form class="auth-form" id="authFormRegister" onsubmit="event.preventDefault();doRegister()">
+      <div class="auth-field">
+        <label>Username <span style="color:var(--text-muted);font-weight:400;">(3–32 chars, letters/numbers/-/_)</span></label>
+        <input type="text" id="regUsername" placeholder="choose a username" autocomplete="username" />
+      </div>
+      <div class="auth-field">
+        <label>Password <span style="color:var(--text-muted);font-weight:400;">(min 6 characters)</span></label>
+        <input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password" />
+      </div>
+      <div class="auth-field">
+        <label>Confirm Password</label>
+        <input type="password" id="regConfirm" placeholder="••••••••" autocomplete="new-password" />
+      </div>
+      <div class="auth-err" id="registerErr"></div>
+      <button class="auth-submit" id="registerBtn" type="submit">Create Account →</button>
+      <div class="auth-divider">Already have an account? <a href="#" style="color:var(--primary);" onclick="event.preventDefault();switchAuthTab('login')">Login here</a></div>
+    </form>
+  </div>
+</div>
+
 <script>
 const API = window.location.hostname === 'localhost' || window.location.hostname === '0.0.0.0'
   ? 'http://localhost:5000/api'
@@ -774,11 +897,150 @@ let _allBlocks = [];
 const BLOCKS_PER_PAGE = 5;
 let _currentPage = 0;
 
-// ── Utilities ──
-function getUser() {
-  const u = document.getElementById('username').value.trim();
-  if (!u) { toast('err', 'Please enter a Username first!'); return null; }
-  return u;
+// ── Auth state ──
+let _authToken = localStorage.getItem('bv_token') || null;
+let _authUser  = localStorage.getItem('bv_user')  || null;
+
+function getToken() { return _authToken; }
+function getUser()  {
+  if (!_authUser) { openAuthModal('login'); return null; }
+  return _authUser;
+}
+
+function _saveAuth(token, username) {
+  _authToken = token; _authUser = username;
+  localStorage.setItem('bv_token', token);
+  localStorage.setItem('bv_user', username);
+}
+function _clearAuth() {
+  _authToken = null; _authUser = null;
+  localStorage.removeItem('bv_token');
+  localStorage.removeItem('bv_user');
+}
+
+// apiFetch — drop-in fetch() with auto Bearer + 401 handling
+async function apiFetch(url, opts = {}) {
+  opts.headers = opts.headers || {};
+  if (_authToken) opts.headers['Authorization'] = 'Bearer ' + _authToken;
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    _clearAuth();
+    updateAuthUI();
+    openAuthModal('login');
+    throw new Error('Session expired. Please log in again.');
+  }
+  return res;
+}
+
+// ── Auth UI helpers ──
+function updateAuthUI() {
+  const loggedIn = !!_authUser;
+  document.getElementById('headerLoggedOut').style.display = loggedIn ? 'none' : 'flex';
+  document.getElementById('headerLoggedIn').style.display  = loggedIn ? 'flex' : 'none';
+  if (loggedIn) {
+    document.getElementById('userLabel').textContent  = _authUser;
+    document.getElementById('userAvatar').textContent = _authUser[0].toUpperCase();
+  }
+}
+
+function openAuthModal(tab = 'login') {
+  switchAuthTab(tab);
+  document.getElementById('authModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => {
+    const el = tab === 'login'
+      ? document.getElementById('loginUsername')
+      : document.getElementById('regUsername');
+    if (el) el.focus();
+  }, 180);
+}
+function closeAuthModal() {
+  document.getElementById('authModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function switchAuthTab(tab) {
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+  ['login','register'].forEach(t => {
+    document.getElementById('authTab'  + cap(t)).classList.toggle('active', t === tab);
+    document.getElementById('authForm' + cap(t)).classList.toggle('active', t === tab);
+  });
+  if (tab === 'login') {
+    document.getElementById('authModalTitle').textContent = 'Welcome Back';
+    document.getElementById('authModalSub').textContent   = 'Sign in to register and verify AI models.';
+  } else {
+    document.getElementById('authModalTitle').textContent = 'Create Account';
+    document.getElementById('authModalSub').textContent   = 'Free and instant — no email required.';
+  }
+}
+
+function _setAuthLoading(btnId, loading, label) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.innerHTML = loading ? '<span class="spinner"></span> ' + label : label;
+}
+function _showAuthErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.classList.add('show');
+}
+function _clearAuthErr(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+async function doLogin() {
+  _clearAuthErr('loginErr');
+  const username = document.getElementById('loginUsername').value.trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value;
+  if (!username || !password) { _showAuthErr('loginErr', 'Username and password required.'); return; }
+  _setAuthLoading('loginBtn', true, 'Logging in...');
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    });
+    const d = await res.json();
+    if (!d.success) { _showAuthErr('loginErr', d.error); return; }
+    _saveAuth(d.token, d.username);
+    updateAuthUI();
+    closeAuthModal();
+    toast('ok', `Welcome back, ${d.username}! 👋`);
+    refreshStats();
+  } catch(e) { _showAuthErr('loginErr', 'Network error. Is the backend running?'); }
+  finally { _setAuthLoading('loginBtn', false, 'Login →'); }
+}
+
+async function doRegister() {
+  _clearAuthErr('registerErr');
+  const username = document.getElementById('regUsername').value.trim().toLowerCase();
+  const password = document.getElementById('regPassword').value;
+  const confirm  = document.getElementById('regConfirm').value;
+  if (!username || !password) { _showAuthErr('registerErr', 'All fields required.'); return; }
+  if (password !== confirm)   { _showAuthErr('registerErr', 'Passwords do not match.'); return; }
+  if (password.length < 6)   { _showAuthErr('registerErr', 'Password must be at least 6 characters.'); return; }
+  _setAuthLoading('registerBtn', true, 'Creating account...');
+  try {
+    const res = await fetch(API + '/auth/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    });
+    const d = await res.json();
+    if (!d.success) { _showAuthErr('registerErr', d.error); return; }
+    _saveAuth(d.token, d.username);
+    updateAuthUI();
+    closeAuthModal();
+    toast('ok', `Account created! Welcome, ${d.username} 🎉`);
+    refreshStats();
+  } catch(e) { _showAuthErr('registerErr', 'Network error. Is the backend running?'); }
+  finally { _setAuthLoading('registerBtn', false, 'Create Account →'); }
+}
+
+function logout() {
+  _clearAuth();
+  updateAuthUI();
+  _allModels = []; _allBlocks = [];
+  document.getElementById('modelsResult').innerHTML = '';
+  document.getElementById('chainView').innerHTML = '';
+  toast('info', 'Logged out successfully.');
+  openAuthModal('login');
 }
 
 function toast(type, msg, duration) {
@@ -915,9 +1177,9 @@ async function registerModel() {
   setLoading('regBtn', true, 'Mining block...');
   document.getElementById('regModelResult').innerHTML = '';
   try {
-    const res = await fetch(API + '/register', {
+    const res = await apiFetch(API + '/register', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta, owner:user })
+      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta })
     });
     const d = await res.json();
     if (d.success) {
@@ -941,7 +1203,7 @@ async function registerModel() {
       refreshStats();
       updateRateLimitBar(user);
     } else { toast('err', d.error); }
-  } catch(e) { toast('err', 'Network error: ' + e.message); }
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', 'Network error: ' + e.message); }
   finally { setLoading('regBtn', false, 'Register Model'); }
 }
 
@@ -970,9 +1232,9 @@ async function verifyModel() {
   setLoading('verBtn', true, 'Verifying...');
   document.getElementById('verResult').innerHTML = '';
   try {
-    const res = await fetch(API + '/verify', {
+    const res = await apiFetch(API + '/verify', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelId, providedHash:hash, verifier:user })
+      body: JSON.stringify({ modelId, providedHash:hash })
     });
     const d = await res.json();
     if (!d.success) { toast('err', d.error); return; }
@@ -994,7 +1256,7 @@ async function verifyModel() {
         </div>
       </div>`;
     refreshStats();
-  } catch(e) { toast('err', 'Network error: ' + e.message); }
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', 'Network error: ' + e.message); }
   finally { setLoading('verBtn', false, 'Verify Integrity'); }
 }
 
@@ -1029,14 +1291,14 @@ async function addVersion() {
 
   setLoading('avBtn', true, 'Mining block...');
   try {
-    const res = await fetch(API + '/add-version', {
+    const res = await apiFetch(API + '/add-version', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelId, newHash:hash, changelog:log, owner:user })
+      body: JSON.stringify({ modelId, newHash:hash, changelog:log })
     });
     const d = await res.json();
     if (d.success) { toast('ok', `Version ${d.version} added on Block #${d.blockIndex} · ⛏ ${d.miningTime ?? '?'}s · ${(d.attempts ?? 0).toLocaleString()} attempts`); refreshStats(); }
     else toast('err', d.error);
-  } catch(e) { toast('err', e.message); }
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', e.message); }
   finally { setLoading('avBtn', false, 'Add Version'); }
 }
 
@@ -1176,14 +1438,14 @@ async function deactivateModel(modelId) {
   const user = getUser(); if (!user) return;
   if (!confirm('Deactivate this model? It will no longer be verifiable.')) return;
   try {
-    const res = await fetch(API + '/deactivate', {
+    const res = await apiFetch(API + '/deactivate', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelId, owner:user })
+      body: JSON.stringify({ modelId })
     });
     const d = await res.json();
     if (d.success) { toast('ok', 'Model deactivated.'); loadMyModels(); }
     else toast('err', d.error);
-  } catch(e) { toast('err', e.message); }
+  } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', e.message); }
 }
 
 // ── Blockchain Explorer ──
@@ -1507,23 +1769,22 @@ function toggleFaq(btn) {
   }
 }
 
-// ── Persist username ──
+// ── Persist username (kept for My Models fetch) ──
 function initUser() {
-  const saved = localStorage.getItem('blockverify_username');
-  if (saved) document.getElementById('username').value = saved;
+  // username now comes from JWT — show auth modal if not logged in
+  if (_authUser) {
+    updateAuthUI();
+  } else {
+    // Small delay so page renders first
+    setTimeout(() => openAuthModal('login'), 400);
+  }
 }
-document.getElementById('username').addEventListener('input', function() {
-  if (this.value.trim()) localStorage.setItem('blockverify_username', this.value.trim());
-});
 
 // ── Init ──
 refreshStats();
 initTheme();
 initUser();
-// Show welcome modal only on first ever visit
-if (!localStorage.getItem('blockverify_visited')) {
-  setTimeout(showWelcome, 600);
-}
+// Show welcome modal only on first ever visit (after login)
 setInterval(refreshStats, 5000);
 </script>
 </body>
