@@ -242,8 +242,8 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Blockchain Block Cards ── */
-    .chain-wrapper { overflow-x: auto; overflow-y: hidden; padding: 1.5rem 0 2rem; }
-    .chain-container { display: flex; align-items: flex-start; gap: 0; width: max-content; padding: 0 .5rem; }
+    .chain-wrapper { overflow-x: auto; overflow-y: hidden; padding: 1.5rem 1.2rem 2rem; }
+    .chain-container { display: flex; align-items: flex-start; gap: 0; width: max-content; padding: 0; }
 
     .chain-connector { display: flex; align-items: center; margin-top: 3.2rem; flex-shrink: 0; width: 60px; }
     .chain-connector svg { width: 60px; height: 20px; }
@@ -396,6 +396,7 @@
       <div class="fg"><label>Model Name *</label><input type="text" id="regName" placeholder="e.g. ResNet50-Health-v1"></div>
       <div class="fg"><label>Metadata (optional)</label><textarea id="regMeta" placeholder="IPFS CID, description, etc."></textarea></div>
       <button class="btn" id="regBtn" onclick="registerModel()">Register Model</button>
+      <div id="rateLimitBar" style="display:none;margin-top:.8rem;font-size:.78rem;color:var(--text-muted);"></div>
       <div id="regModelResult"></div>
     </div>
   </div>
@@ -669,9 +670,24 @@ async function registerModel() {
       document.getElementById('regHashWrap').style.display = 'none';
       hashes.reg = null;
       refreshStats();
+      updateRateLimitBar(user);
     } else { toast('err', d.error); }
   } catch(e) { toast('err', 'Network error: ' + e.message); }
   finally { setLoading('regBtn', false, 'Register Model'); }
+}
+
+async function updateRateLimitBar(owner) {
+  if (!owner) return;
+  try {
+    const r = await fetch(`${API}/rate-limit-status?owner=${encodeURIComponent(owner)}`);
+    const d = await r.json();
+    if (!d.success) return;
+    const bar = document.getElementById('rateLimitBar');
+    if (!bar) return;
+    const color = d.remaining <= 2 ? 'var(--danger)' : d.remaining <= 5 ? 'var(--warn)' : 'var(--success)';
+    bar.style.display = 'block';
+    bar.innerHTML = `⚡ Rate limit: <strong style="color:${color}">${d.remaining}/${d.limit}</strong> operations remaining in the next ${d.windowSeconds}s window`;
+  } catch(_) {}
 }
 
 // ── Verify ──
