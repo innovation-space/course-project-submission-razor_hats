@@ -93,6 +93,8 @@ class Block:
             "previous_hash": self.previous_hash,
             "nonce": self.nonce,
             "hash": self.hash,
+            "mining_time": getattr(self, "mining_time", None),
+            "attempts": getattr(self, "attempts", None),
         }
 
 
