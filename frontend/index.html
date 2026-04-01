@@ -6,6 +6,7 @@
   <title>BlockVerify — AI Model Integrity Verification</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -878,6 +879,21 @@
   </div>
 </div>
 
+<!-- Merkle Tree Modal -->
+<div class="modal-overlay" id="merkleModal" onclick="closeMerkleModal(event)">
+  <div class="modal-box" id="merkleModalBox" style="max-width:760px;width:95vw;">
+    <div class="modal-head">
+      <h3 id="merkleModalTitle">🌲 Merkle Tree — Block #0</h3>
+      <button class="modal-close" onclick="closeMerkleModal(null)">✕</button>
+    </div>
+    <div class="modal-body" style="padding:1rem;">
+      <div id="merkleInfo" style="font-size:.82rem;color:var(--text-muted);margin-bottom:.8rem;"></div>
+      <div id="merkleRoot" style="font-size:.78rem;font-family:var(--mono);background:rgba(108,92,231,.12);border:1px solid rgba(108,92,231,.3);border-radius:8px;padding:.6rem 1rem;margin-bottom:1rem;word-break:break-all;"></div>
+      <div id="merkleSvg" style="width:100%;overflow-x:auto;min-height:200px;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Auth Modal -->
 <div class="auth-overlay" id="authModal">
   <div class="auth-box">
@@ -1444,8 +1460,11 @@ function renderModels(models, query) {
     const statusBadge = m.isActive
       ? '<span class="badge badge-ok">Active</span>'
       : '<span class="badge badge-err">Deactivated</span>';
+    const privBadge = m.isPrivate
+      ? '<span class="badge" style="background:rgba(255,107,107,0.15);color:#ff6b6b;border:1px solid rgba(255,107,107,0.3);">🔒 Private</span>'
+      : '<span class="badge" style="background:rgba(0,206,201,0.12);color:var(--success);border:1px solid rgba(0,206,201,0.25);">🌐 Public</span>';
     h += `<div class="model-item">
-      <div class="model-item-name">${m.modelName} ${statusBadge} <span class="badge badge-warn">v${m.currentVersion}</span></div>
+      <div class="model-item-name">${m.modelName} ${statusBadge} <span class="badge badge-warn">v${m.currentVersion}</span> ${privBadge}</div>
       <div class="model-item-id">
         <code>${m.modelId}</code>
         <button class="copy-btn" onclick="copyText('${m.modelId}', this)" style="flex-shrink:0;">Copy ID</button>
@@ -1458,6 +1477,7 @@ function renderModels(models, query) {
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVerify('${m.modelId}')">Verify</button>
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')">Add Version</button>
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(108,92,231,0.2),rgba(0,206,201,0.15));border-color:rgba(108,92,231,0.4);" onclick="downloadReport('${m.modelId}','${m.modelName.replace(/'/g,'')}')">📄 PDF Report</button>
+        <button class="btn btn-sec" id="privBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;" onclick="togglePrivacy('${m.modelId}',${!m.isPrivate})">${m.isPrivate ? '🔒 Make Public' : '🌐 Make Private'}</button>
         ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')">Deactivate</button>` : ''}
       </div>
     </div>`;
@@ -1739,6 +1759,11 @@ function openBlockModal(blockIndex) {
     <div class="modal-section">
       <div class="modal-section-title">Transactions (${b.transactions.length})</div>
       <div class="modal-tx-list">${txHtml || '<p style="color:var(--text-muted);font-size:.85rem;">No transactions</p>'}</div>
+    </div>
+    <div class="modal-section" style="border-top:1px solid var(--border);padding-top:1rem;">
+      <div class="modal-section-title">Merkle Tree</div>
+      <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:.6rem;">Visualize how all transaction hashes are combined into a single cryptographic Merkle root.</p>
+      <button class="btn btn-sec" style="font-size:.82rem;padding:.5rem 1.1rem;" onclick="openMerkleModal(${b.index})">🌲 View Merkle Tree</button>
     </div>`;
 
   document.getElementById('blockModal').classList.add('open');
@@ -1752,8 +1777,197 @@ function closeBlockModal(e) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeBlockModal(null);
+  if (e.key === 'Escape') { closeBlockModal(null); closeMerkleModal(null); }
 });
+
+
+// ═══════════════════════════════════════════════════════
+//  🌲  MERKLE TREE VISUALIZATION  (client-side, no backend call)
+// ═══════════════════════════════════════════════════════
+
+// SHA-256 a string → hex
+async function _sha256hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// Deterministic tx → hash (mirrors Python: json.dumps sorted keys)
+async function _txHash(tx) {
+  const sorted = JSON.stringify(tx, Object.keys(tx).sort());
+  return _sha256hex(sorted);
+}
+
+// Build Merkle tree as nested object compatible with D3 hierarchy
+async function _buildMerkleClient(txHashes, txTypes) {
+  if (!txHashes.length) return { hash: '0'.repeat(64), label: 'empty', children: [] };
+
+  let nodes = txHashes.map((h, i) => ({
+    hash: h,
+    label: h.slice(0,8) + '…',
+    txType: txTypes[i] || '?',
+    children: [],
+  }));
+
+  if (nodes.length === 1) return nodes[0];
+
+  while (nodes.length > 1) {
+    const next = [];
+    for (let i = 0; i < nodes.length; i += 2) {
+      const left  = nodes[i];
+      const right = nodes[i + 1] || nodes[i];        // duplicate if odd
+      const combined = await _sha256hex(left.hash + right.hash);
+      next.push({
+        hash: combined,
+        label: combined.slice(0,8) + '…',
+        children: right === left ? [left] : [left, right],
+      });
+    }
+    nodes = next;
+  }
+  return nodes[0];
+}
+
+async function openMerkleModal(blockIndex) {
+  document.getElementById('merkleModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('merkleModalTitle').textContent = `🌲 Merkle Tree — Block #${blockIndex}`;
+  document.getElementById('merkleInfo').textContent = 'Computing…';
+  document.getElementById('merkleRoot').textContent = '';
+  document.getElementById('merkleSvg').innerHTML = '';
+
+  try {
+    const b = _allBlocks.find(x => x.index === blockIndex);
+    if (!b) throw new Error('Block not in loaded chain — click Refresh Chain first.');
+
+    const txs   = b.transactions;
+    const types = txs.map(tx => tx.type || '?');
+    const hashes = await Promise.all(txs.map(tx => _txHash(tx)));
+
+    const tree = await _buildMerkleClient(hashes, types);
+
+    document.getElementById('merkleInfo').innerHTML =
+      `Block #${blockIndex} &nbsp;·&nbsp; <strong>${txs.length}</strong> transaction${txs.length !== 1 ? 's' : ''} &nbsp;·&nbsp; Merkle Root ↓`;
+    document.getElementById('merkleRoot').textContent = tree.hash;
+
+    _drawMerkleTree(tree, blockIndex);
+  } catch(e) {
+    document.getElementById('merkleInfo').textContent = 'Error: ' + e.message;
+  }
+}
+
+
+function closeMerkleModal(e) {
+  if (e && e.target !== document.getElementById('merkleModal')) return;
+  document.getElementById('merkleModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function _drawMerkleTree(tree, blockIndex) {
+  const container = document.getElementById('merkleSvg');
+  container.innerHTML = '';
+
+  const isDark    = !document.body.classList.contains('light-theme');
+  const nodeColor = (depth, maxDepth) => depth === maxDepth
+    ? (isDark ? '#6c5ce7' : '#7c6af7')   // leaves = purple
+    : (isDark ? '#00cec9' : '#0097a7');  // internals = teal
+  const textCol   = isDark ? '#e8eaf0' : '#1e293b';
+  const lineCol   = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
+
+  const W = container.clientWidth || 680;
+  const root = d3.hierarchy(tree, d => d.children && d.children.length ? d.children : null);
+  const maxDepth = root.height;
+
+  const nodeH = 54, nodeW = 130, margin = { top: 20, right: 16, bottom: 20, left: 16 };
+  const treeH = (maxDepth + 1) * nodeH * 1.8;
+  const treeLayout = d3.tree().nodeSize([nodeW, nodeH * 1.8]);
+  treeLayout(root);
+
+  // Center the tree
+  let minX = Infinity, maxX = -Infinity;
+  root.each(d => { minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x); });
+  const svgW = Math.max(W, maxX - minX + nodeW + margin.left + margin.right);
+  const offsetX = svgW / 2 - (minX + maxX) / 2;
+
+  const svg = d3.select(container).append('svg')
+    .attr('width', svgW)
+    .attr('height', treeH + margin.top + margin.bottom)
+    .style('background', 'transparent');
+
+  const g = svg.append('g')
+    .attr('transform', `translate(${offsetX},${margin.top})`);
+
+  // Links
+  g.selectAll('.merkle-link')
+    .data(root.links())
+    .enter().append('path')
+    .attr('class', 'merkle-link')
+    .attr('fill', 'none')
+    .attr('stroke', lineCol)
+    .attr('stroke-width', 1.5)
+    .attr('d', d3.linkVertical().x(d => d.x).y(d => d.y));
+
+  // Nodes
+  const node = g.selectAll('.merkle-node')
+    .data(root.descendants())
+    .enter().append('g')
+    .attr('class', 'merkle-node')
+    .attr('transform', d => `translate(${d.x},${d.y})`);
+
+  node.append('rect')
+    .attr('x', -52).attr('y', -16)
+    .attr('width', 104).attr('height', 32)
+    .attr('rx', 8)
+    .attr('fill', d => nodeColor(d.depth, maxDepth))
+    .attr('fill-opacity', 0.9)
+    .style('cursor', 'pointer')
+    .append('title')
+    .text(d => `Hash: ${d.data.hash}`);
+
+  node.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '0.35em')
+    .attr('font-size', '11px')
+    .attr('font-family', 'JetBrains Mono, monospace')
+    .attr('fill', '#fff')
+    .text(d => d.data.hash ? d.data.hash.slice(0, 10) + '…' : '');
+
+  // Leaf badge (tx type)
+  node.filter(d => !d.children).append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '2.0em')
+    .attr('font-size', '9px')
+    .attr('fill', isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)')
+    .text(d => d.data.txType ? `TX: ${d.data.txType}` : 'leaf');
+
+  // Root label
+  g.append('text')
+    .attr('x', root.x).attr('y', root.y - 24)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '10px')
+    .attr('font-weight', '700')
+    .attr('fill', isDark ? '#feca57' : '#e67e22')
+    .text('MERKLE ROOT');
+}
+
+// ═══════════════════════════════════════════════════════
+//  🔒  MODEL ACCESS CONTROL (PRIVACY)
+// ═══════════════════════════════════════════════════════
+async function togglePrivacy(modelId, makePrivate) {
+  const label = makePrivate ? 'private 🔒' : 'public 🌐';
+  try {
+    const res = await apiFetch(`${API}/model/${encodeURIComponent(modelId)}/privacy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isPrivate: makePrivate }),
+    });
+    const d = await res.json();
+    if (!d.success) { toast('err', d.error); return; }
+    toast('ok', `Model is now ${label} — changes take effect immediately.`);
+    loadMyModels();   // refresh the list so the button updates
+  } catch(e) {
+    toast('err', 'Privacy update failed: ' + e.message);
+  }
+}
 
 // ── Theme ──
 function initTheme() {
