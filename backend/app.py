@@ -234,6 +234,13 @@ def verify_model():
         if not model["isActive"]:
             return jsonify({"success": False, "error": "Model is deactivated"}), 400
 
+        # Privacy guard — only the owner can verify a private model
+        if model.get("isPrivate") and model["owner"] != verifier:
+            return jsonify({
+                "success": False,
+                "error": "This model is private 🔒 — only the owner can verify it.",
+            }), 403
+
         is_valid = model["modelHash"] == data["providedHash"]
 
         tx = {
@@ -495,20 +502,26 @@ def validate_chain():
 def search_models():
     """
     Search models by name, hash, or owner.
-
-    Query params:
-        q     (str) : substring to match against modelName and modelHash
-        owner (str) : filter by exact owner (optional)
-
-    Returns:
-        JSON with matching models list and count.
+    Private models are excluded unless the requester owns them.
     """
     try:
+        from auth import decode_token
         q     = request.args.get("q", "").lower().strip()
         owner = request.args.get("owner", "").strip()
 
+        # Determine the requesting user (optional — no 401 if missing)
+        requester = None
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            payload = decode_token(auth_hdr[7:])
+            if payload:
+                requester = payload.get("username")
+
         results = []
         for model in models_registry.values():
+            # Hide private models from non-owners
+            if model.get("isPrivate") and model["owner"] != requester:
+                continue
             if owner and model["owner"] != owner:
                 continue
             if q and not (
@@ -654,19 +667,27 @@ def get_activity():
 def public_registry():
     """
     Public model registry — all models across all owners.
-
-    Query params:
-        q       (str) : substring to match against modelName / modelId / owner
-        page    (int) : 1-indexed page number (default 1)
-        limit   (int) : results per page (default 20, max 50)
+    Private models are excluded from public view.
     """
     try:
+        from auth import decode_token
         q     = request.args.get("q", "").lower().strip()
         page  = max(1, int(request.args.get("page", 1)))
         limit = min(50, max(1, int(request.args.get("limit", 20))))
 
+        # Determine requester (private models visible to their owner)
+        requester = None
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            payload = decode_token(auth_hdr[7:])
+            if payload:
+                requester = payload.get("username")
+
         all_models = sorted(
-            models_registry.values(),
+            [
+                m for m in models_registry.values()
+                if not m.get("isPrivate") or m["owner"] == requester
+            ],
             key=lambda m: m.get("registeredAt", 0),
             reverse=True,
         )
@@ -688,7 +709,7 @@ def public_registry():
             "models": paged,
             "total": total,
             "page": page,
-            "pages": max(1, -(-total // limit)),  # ceiling division
+            "pages": max(1, -(-total // limit)),
             "limit": limit,
         }), 200
     except Exception as e:
@@ -874,6 +895,128 @@ def download_report(model_id):
 
 
 
+
+# ------------------------------------------------------------------ #
+#  Merkle tree helper                                                  #
+# ------------------------------------------------------------------ #
+
+def _tx_hash(tx: dict) -> str:
+    """SHA-256 of a deterministic JSON representation of a transaction."""
+    return hashlib.sha256(
+        json.dumps(tx, sort_keys=True).encode()
+    ).hexdigest()
+
+
+def _build_merkle(tx_hashes: list) -> dict:
+    """
+    Build a Merkle tree from a list of leaf hashes.
+
+    Returns a nested dict:
+        {
+            "hash": "<root_hash>",
+            "children": [ <left_node>, <right_node> ]   # absent for leaves
+        }
+    Compatible with D3.js hierarchy().
+    """
+    if not tx_hashes:
+        # Empty block — single null root
+        return {"hash": "0" * 64, "label": "empty", "children": []}
+
+    # Build leaf nodes
+    nodes = [{"hash": h, "label": h[:8] + "…", "children": []} for h in tx_hashes]
+
+    if len(nodes) == 1:
+        return nodes[0]
+
+    # Bottom-up: keep pairing until one root remains
+    # We track each level as a list of (node_dict, hash) tuples
+    level = nodes
+    while len(level) > 1:
+        next_level = []
+        i = 0
+        while i < len(level):
+            left = level[i]
+            # Odd number of nodes → duplicate last one
+            right = level[i + 1] if i + 1 < len(level) else level[i]
+            combined = hashlib.sha256(
+                (left["hash"] + right["hash"]).encode()
+            ).hexdigest()
+            parent = {
+                "hash": combined,
+                "label": combined[:8] + "…",
+                "children": [left] if right is left else [left, right],
+            }
+            next_level.append(parent)
+            i += 2
+        level = next_level
+
+    return level[0]
+
+
+@app.route("/api/block/<int:index>/merkle", methods=["GET"])
+def get_merkle_tree(index):
+    """
+    Return the Merkle tree of transaction hashes for a given block.
+    The response is a D3-compatible hierarchy dict.
+    """
+    if index < 0 or index >= len(blockchain.chain):
+        return jsonify({"success": False, "error": "Block not found"}), 404
+
+    block = blockchain.chain[index]
+    tx_hashes = [_tx_hash(tx) for tx in block.transactions]
+    leaves = [{"hash": h, "txIndex": i, "txType": block.transactions[i].get("type", "?")}
+              for i, h in enumerate(tx_hashes)]
+
+    tree = _build_merkle(tx_hashes)
+
+    return jsonify({
+        "success": True,
+        "blockIndex": index,
+        "merkleRoot": tree["hash"],
+        "txCount": len(tx_hashes),
+        "leaves": leaves,
+        "tree": tree,
+    }), 200
+
+
+# ------------------------------------------------------------------ #
+#  Model access control (privacy)                                      #
+# ------------------------------------------------------------------ #
+
+@app.route("/api/model/<model_id>/privacy", methods=["POST"])
+@require_auth
+def set_model_privacy(model_id):
+    """
+    Toggle a model's privacy.  Only the model owner may call this.
+
+    Body:  { "isPrivate": true | false }
+
+    Private models:
+        - Are hidden from /api/registry and /api/search (for non-owners).
+        - Can only be verified by the owner.
+        - Still appear in the owner's /api/models/<owner> list.
+    """
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+    if model["owner"] != g.user:
+        return jsonify({"success": False, "error": "Only the model owner can change privacy settings"}), 403
+
+    data = request.get_json(silent=True) or {}
+    is_private = bool(data.get("isPrivate", False))
+    model["isPrivate"] = is_private
+    save_state()
+
+    status = "private 🔒" if is_private else "public 🌐"
+    return jsonify({
+        "success": True,
+        "modelId": model_id,
+        "isPrivate": is_private,
+        "message": f"Model is now {status}",
+    }), 200
+
+
+# ------------------------------------------------------------------ #
 #  Server start                                                        #
 # ------------------------------------------------------------------ #
 

@@ -72,6 +72,14 @@ def _decode_token(token: str) -> dict:
     """Return decoded payload or raise jwt.PyJWTError."""
     return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
 
+
+def decode_token(token: str) -> dict | None:
+    """Public helper: decode a token and return payload, or None on failure."""
+    try:
+        return _decode_token(token)
+    except jwt.PyJWTError:
+        return None
+
 # ── require_auth decorator ────────────────────────────────────────────────────
 def require_auth(fn):
     """
