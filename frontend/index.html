@@ -1782,74 +1782,27 @@ document.addEventListener('keydown', e => {
 
 
 // ═══════════════════════════════════════════════════════
-//  🌲  MERKLE TREE VISUALIZATION  (client-side, no backend call)
+//  🌲  MERKLE TREE VISUALIZATION
 // ═══════════════════════════════════════════════════════
-
-// SHA-256 a string → hex
-async function _sha256hex(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-
-// Deterministic tx → hash (mirrors Python: json.dumps sorted keys)
-async function _txHash(tx) {
-  const sorted = JSON.stringify(tx, Object.keys(tx).sort());
-  return _sha256hex(sorted);
-}
-
-// Build Merkle tree as nested object compatible with D3 hierarchy
-async function _buildMerkleClient(txHashes, txTypes) {
-  if (!txHashes.length) return { hash: '0'.repeat(64), label: 'empty', children: [] };
-
-  let nodes = txHashes.map((h, i) => ({
-    hash: h,
-    label: h.slice(0,8) + '…',
-    txType: txTypes[i] || '?',
-    children: [],
-  }));
-
-  if (nodes.length === 1) return nodes[0];
-
-  while (nodes.length > 1) {
-    const next = [];
-    for (let i = 0; i < nodes.length; i += 2) {
-      const left  = nodes[i];
-      const right = nodes[i + 1] || nodes[i];        // duplicate if odd
-      const combined = await _sha256hex(left.hash + right.hash);
-      next.push({
-        hash: combined,
-        label: combined.slice(0,8) + '…',
-        children: right === left ? [left] : [left, right],
-      });
-    }
-    nodes = next;
-  }
-  return nodes[0];
-}
-
 async function openMerkleModal(blockIndex) {
   document.getElementById('merkleModal').classList.add('open');
   document.body.style.overflow = 'hidden';
   document.getElementById('merkleModalTitle').textContent = `🌲 Merkle Tree — Block #${blockIndex}`;
-  document.getElementById('merkleInfo').textContent = 'Computing…';
+  document.getElementById('merkleInfo').textContent = 'Loading…';
   document.getElementById('merkleRoot').textContent = '';
   document.getElementById('merkleSvg').innerHTML = '';
 
   try {
-    const b = _allBlocks.find(x => x.index === blockIndex);
-    if (!b) throw new Error('Block not in loaded chain — click Refresh Chain first.');
-
-    const txs   = b.transactions;
-    const types = txs.map(tx => tx.type || '?');
-    const hashes = await Promise.all(txs.map(tx => _txHash(tx)));
-
-    const tree = await _buildMerkleClient(hashes, types);
+    const res = await fetch(`${API}/block/${blockIndex}/merkle`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    const d = await res.json();
+    if (!d.success) throw new Error(d.error);
 
     document.getElementById('merkleInfo').innerHTML =
-      `Block #${blockIndex} &nbsp;·&nbsp; <strong>${txs.length}</strong> transaction${txs.length !== 1 ? 's' : ''} &nbsp;·&nbsp; Merkle Root ↓`;
-    document.getElementById('merkleRoot').textContent = tree.hash;
+      `Block #${blockIndex} &nbsp;·&nbsp; <strong>${d.txCount}</strong> transaction${d.txCount !== 1 ? 's' : ''} &nbsp;·&nbsp; Merkle Root ↓`;
+    document.getElementById('merkleRoot').textContent = d.merkleRoot;
 
-    _drawMerkleTree(tree, blockIndex);
+    _drawMerkleTree(d.tree, d.leaves || []);
   } catch(e) {
     document.getElementById('merkleInfo').textContent = 'Error: ' + e.message;
   }
@@ -1862,92 +1815,135 @@ function closeMerkleModal(e) {
   document.body.style.overflow = '';
 }
 
-function _drawMerkleTree(tree, blockIndex) {
+function _drawMerkleTree(tree, leaves) {
+  // Build txType lookup: hash → txType using the leaves array from backend
+  const txTypeByHash = {};
+  (leaves || []).forEach(lf => { txTypeByHash[lf.hash] = lf.txType; });
+
   const container = document.getElementById('merkleSvg');
   container.innerHTML = '';
 
-  const isDark    = !document.body.classList.contains('light-theme');
-  const nodeColor = (depth, maxDepth) => depth === maxDepth
-    ? (isDark ? '#6c5ce7' : '#7c6af7')   // leaves = purple
-    : (isDark ? '#00cec9' : '#0097a7');  // internals = teal
-  const textCol   = isDark ? '#e8eaf0' : '#1e293b';
-  const lineCol   = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
+  const isDark   = !document.body.classList.contains('light-theme');
+  const leafCol  = isDark ? '#6c5ce7' : '#7c6af7';   // purple  = leaf
+  const intCol   = isDark ? '#00b894' : '#00897b';   // green   = internal
+  const rootCol  = isDark ? '#fd79a8' : '#e84393';   // pink    = root
+  const lineCol  = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)';
+  const labelCol = isDark ? '#feca57' : '#e67e22';
 
-  const W = container.clientWidth || 680;
+  const W = Math.max(container.clientWidth || 0, 300);
+
   const root = d3.hierarchy(tree, d => d.children && d.children.length ? d.children : null);
   const maxDepth = root.height;
 
-  const nodeH = 54, nodeW = 130, margin = { top: 20, right: 16, bottom: 20, left: 16 };
-  const treeH = (maxDepth + 1) * nodeH * 1.8;
-  const treeLayout = d3.tree().nodeSize([nodeW, nodeH * 1.8]);
+  // ── Give the root-label text 36px headroom above the root node ──
+  const LABEL_HEADROOM = 36;
+  const nodeH = 56, nodeW = 136;
+  const margin = { top: LABEL_HEADROOM + 12, right: 16, bottom: 28, left: 16 };
+  const levelGap = nodeH * 1.9;
+
+  const treeLayout = d3.tree().nodeSize([nodeW, levelGap]);
   treeLayout(root);
 
-  // Center the tree
+  // Span of x coords
   let minX = Infinity, maxX = -Infinity;
   root.each(d => { minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x); });
-  const svgW = Math.max(W, maxX - minX + nodeW + margin.left + margin.right);
-  const offsetX = svgW / 2 - (minX + maxX) / 2;
+
+  const treeSpan = maxX - minX + nodeW;
+  const svgW     = Math.max(W, treeSpan + margin.left + margin.right);
+  const svgH     = (maxDepth + 1) * levelGap + margin.top + margin.bottom;
+  // Translate so the whole tree is centred horizontally and clears top margin
+  const offsetX  = svgW / 2 - (minX + maxX) / 2;
+  const offsetY  = margin.top;
 
   const svg = d3.select(container).append('svg')
-    .attr('width', svgW)
-    .attr('height', treeH + margin.top + margin.bottom)
+    .attr('width', svgW).attr('height', svgH)
     .style('background', 'transparent');
 
   const g = svg.append('g')
-    .attr('transform', `translate(${offsetX},${margin.top})`);
+    .attr('transform', `translate(${offsetX},${offsetY})`);
 
-  // Links
-  g.selectAll('.merkle-link')
-    .data(root.links())
-    .enter().append('path')
-    .attr('class', 'merkle-link')
+  // ── Links ──────────────────────────────────────────────────────
+  g.selectAll('.mk-link')
+    .data(root.links()).enter()
+    .append('path')
+    .attr('class', 'mk-link')
     .attr('fill', 'none')
     .attr('stroke', lineCol)
-    .attr('stroke-width', 1.5)
+    .attr('stroke-width', 1.8)
+    .attr('stroke-dasharray', d => d.source.depth === 0 ? '4,3' : 'none')
     .attr('d', d3.linkVertical().x(d => d.x).y(d => d.y));
 
-  // Nodes
-  const node = g.selectAll('.merkle-node')
-    .data(root.descendants())
-    .enter().append('g')
-    .attr('class', 'merkle-node')
+  // ── Nodes ──────────────────────────────────────────────────────
+  const nodeG = g.selectAll('.mk-node')
+    .data(root.descendants()).enter()
+    .append('g')
+    .attr('class', 'mk-node')
     .attr('transform', d => `translate(${d.x},${d.y})`);
 
-  node.append('rect')
-    .attr('x', -52).attr('y', -16)
-    .attr('width', 104).attr('height', 32)
-    .attr('rx', 8)
-    .attr('fill', d => nodeColor(d.depth, maxDepth))
-    .attr('fill-opacity', 0.9)
+  // Pick colour per node
+  function nodeCol(d) {
+    if (d.depth === 0) return rootCol;      // root → pink
+    if (!d.children || !d.children.length) return leafCol; // leaf → purple
+    return intCol;                          // internal → green
+  }
+
+  // Pill background
+  nodeG.append('rect')
+    .attr('x', -54).attr('y', -17)
+    .attr('width', 108).attr('height', 34)
+    .attr('rx', 10)
+    .attr('fill', d => nodeCol(d))
+    .attr('fill-opacity', 0.92)
+    .attr('stroke', d => d.depth === 0 ? labelCol : 'none')
+    .attr('stroke-width', d => d.depth === 0 ? 2 : 0)
     .style('cursor', 'pointer')
     .append('title')
-    .text(d => `Hash: ${d.data.hash}`);
+    .text(d => `Full hash:\n${d.data.hash}`);
 
-  node.append('text')
-    .attr('text-anchor', 'middle')
-    .attr('dy', '0.35em')
+  // Hash text in node
+  nodeG.append('text')
+    .attr('text-anchor', 'middle').attr('dy', '0.35em')
     .attr('font-size', '11px')
     .attr('font-family', 'JetBrains Mono, monospace')
     .attr('fill', '#fff')
-    .text(d => d.data.hash ? d.data.hash.slice(0, 10) + '…' : '');
+    .attr('pointer-events', 'none')
+    .text(d => d.data.hash ? d.data.hash.slice(0, 11) + '…' : '');
 
-  // Leaf badge (tx type)
-  node.filter(d => !d.children).append('text')
-    .attr('text-anchor', 'middle')
-    .attr('dy', '2.0em')
+  // TX-type badge under leaves
+  nodeG.filter(d => !d.children || !d.children.length)
+    .append('text')
+    .attr('text-anchor', 'middle').attr('dy', '2.1em')
     .attr('font-size', '9px')
-    .attr('fill', isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)')
-    .text(d => d.data.txType ? `TX: ${d.data.txType}` : 'leaf');
+    .attr('fill', isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.38)')
+    .attr('pointer-events', 'none')
+    .text(d => {
+      const t = txTypeByHash[d.data.hash] || d.data.txType;
+      return t ? `⬡ ${t}` : '⬡ leaf';
+    });
 
-  // Root label
+  // ── MERKLE ROOT label above root node ─────────────────────────
+  // root.y is 0 in tree coords; we use offset = -LABEL_HEADROOM + 4
   g.append('text')
-    .attr('x', root.x).attr('y', root.y - 24)
+    .attr('x', root.x)
+    .attr('y', root.y - LABEL_HEADROOM + 4)
     .attr('text-anchor', 'middle')
     .attr('font-size', '10px')
     .attr('font-weight', '700')
-    .attr('fill', isDark ? '#feca57' : '#e67e22')
-    .text('MERKLE ROOT');
+    .attr('letter-spacing', '0.08em')
+    .attr('fill', labelCol)
+    .text('▼  MERKLE ROOT');
+
+  // ── Single-node helper text ────────────────────────────────────
+  if (maxDepth === 0) {
+    g.append('text')
+      .attr('x', root.x).attr('y', root.y + 36)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '10px')
+      .attr('fill', isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.35)')
+      .text('Single transaction — leaf IS the root');
+  }
 }
+
 
 // ═══════════════════════════════════════════════════════
 //  🔒  MODEL ACCESS CONTROL (PRIVACY)
