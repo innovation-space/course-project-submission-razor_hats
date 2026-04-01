@@ -537,6 +537,31 @@
       .welcome-box { padding: 1.5rem 1.2rem; }
       .qs-grid { grid-template-columns: 1fr 1fr; }
     }
+
+    /* ── Delayed tooltip ─────────────────────────────────────── */
+    #bv-tip {
+      position: fixed;
+      z-index: 99999;
+      pointer-events: none;
+      max-width: 210px;
+      padding: .45rem .85rem;
+      border-radius: 9px;
+      font-size: .76rem;
+      font-family: var(--font);
+      line-height: 1.45;
+      color: #e8eaf0;
+      text-align: center;
+      background: rgba(18, 12, 42, 0.82);
+      backdrop-filter: blur(14px) saturate(1.4);
+      -webkit-backdrop-filter: blur(14px) saturate(1.4);
+      border: 1px solid rgba(108, 92, 231, 0.35);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06);
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity .25s ease, transform .25s ease;
+      white-space: normal;
+    }
+    #bv-tip.bv-tip-show { opacity: 1; transform: translateY(0); }
   </style>
 </head>
 <body>
@@ -583,9 +608,9 @@
         <div style="font-size:.8rem;color:var(--text-muted);">Daily registrations &amp; verifications</div>
       </div>
       <div style="display:flex;gap:.4rem;">
-        <button onclick="loadActivityChart(7)"  class="btn btn-sec" id="actBtn7"  style="padding:.3rem .75rem;font-size:.8rem;">7d</button>
-        <button onclick="loadActivityChart(14)" class="btn"        id="actBtn14" style="padding:.3rem .75rem;font-size:.8rem;">14d</button>
-        <button onclick="loadActivityChart(30)" class="btn btn-sec" id="actBtn30" style="padding:.3rem .75rem;font-size:.8rem;">30d</button>
+        <button onclick="loadActivityChart(7)"  class="btn btn-sec" id="actBtn7"  style="padding:.3rem .75rem;font-size:.8rem;" data-tip="Show last 7 days of platform activity.">7d</button>
+        <button onclick="loadActivityChart(14)" class="btn"        id="actBtn14" style="padding:.3rem .75rem;font-size:.8rem;" data-tip="Show last 14 days of platform activity.">14d</button>
+        <button onclick="loadActivityChart(30)" class="btn btn-sec" id="actBtn30" style="padding:.3rem .75rem;font-size:.8rem;" data-tip="Show last 30 days of platform activity.">30d</button>
       </div>
     </div>
     <div style="position:relative;height:180px;">
@@ -595,14 +620,14 @@
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab active"  onclick="switchTab('register',this)">📝 Register</button>
-    <button class="tab"         onclick="switchTab('verify',this)">✅ Verify</button>
-    <button class="tab"         onclick="switchTab('versions',this)">📋 Versions</button>
-    <button class="tab"         onclick="switchTab('audit',this)">🔍 Audit Trail</button>
-    <button class="tab"         onclick="switchTab('models',this)">📦 My Models</button>
-    <button class="tab"         onclick="switchTab('registry',this)">🌐 Registry</button>
-    <button class="tab"         onclick="switchTab('explorer',this)">🔗 Explorer</button>
-    <button class="tab"         onclick="switchTab('help',this)">❓ Help</button>
+    <button class="tab active"  onclick="switchTab('register',this)" data-tip="Register an AI model by uploading a file — we compute its SHA-256 fingerprint and write it permanently to the blockchain.">📝 Register</button>
+    <button class="tab"         onclick="switchTab('verify',this)" data-tip="Re-upload your model or paste its hash to verify it hasn't been tampered with. A mismatch means the file was changed.">✅ Verify</button>
+    <button class="tab"         onclick="switchTab('versions',this)" data-tip="View the full version history of a model — every hash and changelog entry ever added.">📋 Versions</button>
+    <button class="tab"         onclick="switchTab('audit',this)" data-tip="See every verification attempt for a model — who verified it, when, and whether it passed.">🔍 Audit Trail</button>
+    <button class="tab"         onclick="switchTab('models',this)" data-tip="View and manage all AI models registered under your account.">📦 My Models</button>
+    <button class="tab"         onclick="switchTab('registry',this)" data-tip="Browse the public ledger — all models registered by all users on this blockchain.">🌐 Registry</button>
+    <button class="tab"         onclick="switchTab('explorer',this)" data-tip="Inspect every block in the blockchain, view transactions, hashes, mining stats, and Merkle trees.">🔗 Explorer</button>
+    <button class="tab"         onclick="switchTab('help',this)" data-tip="FAQs, quick-start guide, and documentation for all BlockVerify features.">❓ Help</button>
   </div>
 
   <!-- Register -->
@@ -703,7 +728,7 @@
       <h2>📦 My Registered Models</h2>
       <p class="subtitle">Models registered under your username.</p>
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem;">
-        <button class="btn btn-sec" onclick="loadMyModels()">Refresh</button>
+        <button class="btn btn-sec" onclick="loadMyModels()" data-tip="Reload your registered models list from the blockchain.">Refresh</button>
         <input type="text" id="modelSearch" placeholder="Search by name or ID…" oninput="filterModels()" style="flex:1;min-width:180px;max-width:320px;" />
       </div>
       <div id="modelsResult" style="margin-top:.75rem;"></div>
@@ -717,7 +742,7 @@
       <p class="subtitle">All AI models registered on the blockchain — the public immutable ledger.</p>
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.8rem;">
         <input type="text" id="registrySearch" placeholder="Search by name, ID, or owner…" oninput="searchRegistry()" style="flex:1;min-width:200px;max-width:380px;" />
-        <button class="btn btn-sec" onclick="loadRegistry()">Refresh</button>
+        <button class="btn btn-sec" onclick="loadRegistry()" data-tip="Reload the public registry — all models from all users on this chain.">Refresh</button>
       </div>
       <div id="registryResult"></div>
       <div id="registryPager" style="display:none;margin-top:1rem;align-items:center;justify-content:center;gap:.7rem;">
@@ -734,7 +759,7 @@
       <h2>🔗 Blockchain Explorer</h2>
       <p class="subtitle">Browse every block and transaction on the chain.</p>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
-        <button class="btn btn-sec" onclick="loadChain()">Refresh Chain</button>
+        <button class="btn btn-sec" onclick="loadChain()" data-tip="Fetch the latest chain from the server and re-render all block cards.">Refresh Chain</button>
         <button class="btn" id="validateBtn" onclick="validateChain()">Validate Chain Integrity</button>
         <button class="btn" id="tamperBtn" onclick="runTamperDemo()" style="background:linear-gradient(135deg,#e84393,#c0392b);">⚠️ Simulate Tamper Attack</button>
       </div>
@@ -1474,11 +1499,11 @@ function renderModels(models, query) {
         <span>${new Date(m.registeredAt * 1000).toLocaleDateString()}</span>
       </div>
       <div class="model-item-actions">
-        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVerify('${m.modelId}')">Verify</button>
-        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')">Add Version</button>
-        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(108,92,231,0.2),rgba(0,206,201,0.15));border-color:rgba(108,92,231,0.4);" onclick="downloadReport('${m.modelId}','${m.modelName.replace(/'/g,'')}')">📄 PDF Report</button>
-        <button class="btn btn-sec" id="privBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;" onclick="togglePrivacy('${m.modelId}',${!m.isPrivate})">${m.isPrivate ? '🔒 Make Public' : '🌐 Make Private'}</button>
-        ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')">Deactivate</button>` : ''}
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVerify('${m.modelId}')" data-tip="Go to Verify tab with this model's ID pre-filled — re-upload your file to check its integrity.">Verify</button>
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')" data-tip="Add a new version — upload a new file and add a changelog note while keeping the full history.">Add Version</button>
+        <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(108,92,231,0.2),rgba(0,206,201,0.15));border-color:rgba(108,92,231,0.4);" onclick="downloadReport('${m.modelId}','${m.modelName.replace(/'/g,'')}')" data-tip="Download a PDF integrity report — includes model metadata, hash, version history, and full audit trail.">📄 PDF Report</button>
+        <button class="btn btn-sec" id="privBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;" onclick="togglePrivacy('${m.modelId}',${!m.isPrivate})" data-tip="${m.isPrivate ? 'Make this model public — anyone can see and verify it in the Registry.' : 'Make this model private — only you can verify it, hidden from public Registry.'}">${m.isPrivate ? '🔒 Make Public' : '🌐 Make Private'}</button>
+        ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')" data-tip="Permanently deactivate this model — it will no longer accept verifications.">Deactivate</button>` : ''}
       </div>
     </div>`;
   });
@@ -2222,5 +2247,69 @@ loadActivityChart(14);
 setInterval(refreshStats, 5000);
 
 </script>
+
+<!-- ═══════════════════════════════════════════════════════
+     Delayed Tooltip Engine
+     Shows a glassmorphism tooltip after 4s of hovering
+     any element with a [data-tip] attribute.
+═══════════════════════════════════════════════════════ -->
+<div id="bv-tip" role="tooltip" aria-live="polite"></div>
+<script>
+(function() {
+  const tip   = document.getElementById('bv-tip');
+  let timer   = null;
+  let current = null;
+
+  function showTip(el) {
+    const rect = el.getBoundingClientRect();
+    tip.textContent = el.dataset.tip;
+
+    // Reset position so clientWidth reflects the new text
+    tip.style.left = '-9999px';
+    tip.style.top  = '-9999px';
+    tip.classList.add('bv-tip-show');
+
+    // Place centred above the element, clamped within viewport
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    let  x  = rect.left + rect.width  / 2 - tw / 2;
+    let  y  = rect.top  - th - 10;
+
+    // Clamp horizontally
+    x = Math.max(8, Math.min(x, window.innerWidth - tw - 8));
+    // If no room above, flip below
+    if (y < 8) y = rect.bottom + 10;
+
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+  }
+
+  function hideTip() {
+    clearTimeout(timer);
+    timer   = null;
+    current = null;
+    tip.classList.remove('bv-tip-show');
+  }
+
+  document.addEventListener('mouseover', function(e) {
+    const el = e.target.closest('[data-tip]');
+    if (!el || el === current) return;
+    hideTip();
+    current = el;
+    timer = setTimeout(() => showTip(el), 4000);
+  }, { passive: true });
+
+  document.addEventListener('mouseout', function(e) {
+    const el = e.target.closest('[data-tip]');
+    if (!el || el !== current) return;
+    hideTip();
+  }, { passive: true });
+
+  // Also hide immediately on click / scroll
+  document.addEventListener('click',  hideTip, { passive: true });
+  document.addEventListener('scroll', hideTip, { passive: true });
+})();
+</script>
+
 </body>
 </html>
