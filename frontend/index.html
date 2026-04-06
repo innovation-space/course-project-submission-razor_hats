@@ -28,6 +28,10 @@
       cursor: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 2 L19 9 L12 11 L10 18 Z" fill="%2300cec9" stroke="%23ffffff" stroke-width="1.5" stroke-linejoin="round"/></svg>') 5 2, auto;
     }
     
+    /* ── Hide Scrollbars Globally ── */
+    ::-webkit-scrollbar { display: none; }
+    * { -ms-overflow-style: none; scrollbar-width: none; }
+    
     /* ── Animated Background Canvas ── */
     #bg-canvas {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
@@ -573,6 +577,42 @@
       15% { opacity: 1; transform: scale(1.1); }
       100% { opacity: 0; transform: scale(1.3); }
     }
+    
+    /* ── Guided Tour System ── */
+    .tour-blocker { position: fixed; inset: 0; z-index: 8999; }
+    .tour-spotlight {
+      position: absolute; border-radius: 8px; z-index: 9000; pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.65);
+      transition: all 0.3s ease;
+    }
+    .tour-tooltip {
+      position: absolute; z-index: 9001; background: var(--surface); border: 1px solid var(--border);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      padding: 1.5rem; border-radius: 12px; width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      animation: slideUpFade 0.3s ease; transition: left 0.3s ease, top 0.3s ease;
+      color: var(--text); font-family: var(--font); font-size: .9rem;
+    }
+    .tour-tooltip-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: .8rem; font-size: .75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .tour-tooltip-title { font-weight: 800; font-size: 1.1rem; color: var(--primary); margin-bottom: .6rem; }
+    .tour-tooltip-body { line-height: 1.5; color: var(--text); margin-bottom: 1.2rem; }
+    .tour-tooltip-footer { display: flex; justify-content: space-between; align-items: center; }
+    .tour-dots { display: flex; gap: 4px; }
+    .tour-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.2); transition: background 0.2s; }
+    .tour-dot.active { background: var(--primary); }
+    .tour-btn { padding: .4rem .8rem; border-radius: 6px; cursor: pointer; font-size: .8rem; font-weight: 600; border: none; font-family: var(--font); }
+    .tour-btn-skip { background: transparent; color: var(--text-muted); }
+    .tour-btn-skip:hover { color: var(--text); }
+    .tour-btn-next { background: linear-gradient(135deg, var(--primary), var(--primary-h)); color: #fff; }
+    .tour-arrow { position: absolute; width: 0; height: 0; border-style: solid; transition: left 0.3s ease, top 0.3s ease; }
+    .tour-arrow-bottom { border-width: 0 10px 10px 10px; border-color: transparent transparent var(--border) transparent; top: -11px; left: 20px; }
+    .tour-arrow-bottom::after { content:''; position:absolute; left:-9px; top:1px; border-style:solid; border-width: 0 9px 9px 9px; border-color:transparent transparent var(--surface) transparent; }
+    .tour-arrow-top { border-width: 10px 10px 0 10px; border-color: var(--border) transparent transparent transparent; bottom: -11px; left: 20px; }
+    .tour-arrow-top::after { content:''; position:absolute; left:-9px; top:-10px; border-style:solid; border-width: 9px 9px 0 9px; border-color:var(--surface) transparent transparent transparent; }
+    .tour-arrow-right { border-width: 10px 0 10px 10px; border-color: transparent transparent transparent var(--border); right: -11px; top: 20px; }
+    .tour-arrow-right::after { content:''; position:absolute; left:-10px; top:-9px; border-style:solid; border-width: 9px 0 9px 9px; border-color:transparent transparent transparent var(--surface); }
+    .tour-arrow-left { border-width: 10px 10px 10px 0; border-color: transparent var(--border) transparent transparent; left: -11px; top: 20px; }
+    .tour-arrow-left::after { content:''; position:absolute; left:1px; top:-9px; border-style:solid; border-width: 9px 9px 9px 0; border-color:transparent var(--surface) transparent transparent; }
   </style>
 </head>
 <body>
@@ -596,6 +636,7 @@
       </div>
       <button class="btn-logout" onclick="logout()">Logout</button>
       <button onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;outline:none;transition:transform 0.2s;" id="themeToggle" title="Toggle theme" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">☀️</button>
+      <button onclick="startGuidedTour()" title="Interactive Tour" style="background:rgba(0,206,201,0.15);border:1px solid rgba(0,206,201,0.3);color:var(--success);border-radius:8px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem;font-weight:700;">🧭 Take a Tour</button>
       <button onclick="showWelcome()" title="Quick start guide" style="background:rgba(108,92,231,0.15);border:1px solid rgba(108,92,231,0.3);color:var(--primary);border-radius:8px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem;font-weight:700;">❓ Help</button>
     </div>
   </div>
@@ -816,51 +857,91 @@
             <h4>4. Explore the Chain</h4>
             <p>Browse every block. Click any block to inspect its full contents and transactions.</p>
           </div>
+          <!-- Watch Demo Card -->
+          <div class="qs-card" id="startTourBtn" onclick="startGuidedTour()" style="border-color: var(--primary);">
+            <div class="qs-icon" style="color: var(--primary);">▶</div>
+            <h4>Watch Demo</h4>
+            <p>Interactive Tour — click to explore the platform step by step.</p>
+          </div>
+        </div>
+        
+        <!-- Live Quick Stats Badge -->
+        <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: .7rem 1.2rem; margin-top: 1.2rem; justify-content: center; font-size: .85rem; font-weight: 600; color: var(--text-muted);">
+          <span><strong id="helpStatModels" style="color:var(--text);">—</strong> Models Registered</span>
+          <span style="opacity: 0.3;">·</span>
+          <span><strong id="helpStatVerify" style="color:var(--text);">—</strong> Verifications</span>
+          <span style="opacity: 0.3;">·</span>
+          <span><strong id="helpStatBlocks" style="color:var(--text);">—</strong> Blocks</span>
         </div>
       </div>
 
       <!-- FAQ -->
-      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.8rem;">💬 Frequently Asked Questions</div>
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.8rem;display:flex;justify-content:space-between;align-items:center;">
+        <span>💬 Frequently Asked Questions</span>
+      </div>
+      
+      <input type="text" id="faqSearchInput" placeholder="🔍 Search FAQ..." style="margin-bottom: 1.5rem; border-radius: 12px; padding: .75rem 1rem; background: rgba(255,255,255,0.03);" onkeyup="filterFaq()">
 
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">What is BlockVerify? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">BlockVerify is a custom blockchain system that lets you register AI models and verify their integrity over time. Every registration creates an immutable record on our blockchain — if someone tampers with the model file, the hash won't match and you'll know immediately.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">Do I need to create an account? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">No account needed. Just type any username in the top-right field and start using the app. Your username is used as the owner tag for your models — pick something memorable so you can find your models later in the <strong>My Models</strong> tab.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">What file types can I register? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">Any file — <code>.pt</code>, <code>.h5</code>, <code>.pkl</code>, <code>.onnx</code>, <code>.bin</code>, PDFs, ZIPs, etc. The app only reads the file to compute its SHA-256 hash. The file itself is never uploaded to any server — all hashing happens in your browser.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">What is a Model ID and where do I find it? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">When you register a model, a unique 16-character Model ID is generated (e.g. <code>a3f9b2c1d4e8f7a0</code>). It is automatically copied to your clipboard. You can also find all your Model IDs in the <strong>My Models</strong> tab. Keep this ID — you need it for verification and version history.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">How do I verify a model? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">Go to the <strong>Verify</strong> tab → upload the model file → paste the Model ID → click Verify. If the SHA-256 hash of your file matches what's stored on the blockchain, it's verified as intact. If it doesn't match, the model has been modified since registration.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">What is Proof-of-Work (PoW) mining? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">Each write operation (register, verify, add version) creates a new blockchain block. Mining means finding a nonce value that makes the block's SHA-256 hash start with <code>0000</code>. This takes thousands of attempts and makes the chain computationally expensive to tamper with. You can see mining time and attempts in the ⛏ badge after each operation.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">What does "Simulate Tamper Attack" do? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">It's a safe demo in the Explorer tab. The backend temporarily modifies a block's data, runs the chain validator (which detects the change), then immediately restores the original data. Nothing is permanently changed — it just proves your blockchain can detect tampering.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">What is the rate limit? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">Each username can perform at most <strong>10 write operations</strong> (register, verify, add version) per 60 seconds. This prevents the blockchain from being flooded. If you hit the limit, wait a moment and try again — the Register tab shows your remaining quota after each operation.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">Why does the app say "Network error"? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">The backend server may not be running. Make sure you started it with <code>python backend/app.py</code> from the project root. If using the hosted version, the Render free tier may be sleeping — wait 30 seconds and try again after the first request wakes it up.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)">Is my data safe? What happens when the server restarts? <span class="faq-arrow">▼</span></button>
-        <div class="faq-a">All data is persisted to JSON files in <code>backend/data/</code> on every write. If the server restarts, data is reloaded automatically. On Render's free tier, the disk is ephemeral — data resets on each deploy. For production use, attach a persistent disk.</div>
+      <div id="faqList">
+        <!-- Getting Started -->
+        <div class="faq-category">
+          <h3 style="font-size: .85rem; font-weight: 700; color: var(--primary); margin: 0 0 .6rem; text-transform: uppercase;">🔷 Getting Started</h3>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">What is BlockVerify? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">BlockVerify is a custom blockchain system that lets you register AI models and verify their integrity over time. Every registration creates an immutable record on our blockchain — if someone tampers with the model file, the hash won't match and you'll know immediately.</div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">Do I need to create an account? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">Yes, a free account is required to securely register and verify models on the blockchain. You can create one instantly using the <strong>Login / Register</strong> button in the top right. Your account username acts as the owner tag for your models, allowing you to easily track and organize them in the <strong>My Models</strong> tab.</div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">What file types can I register? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">Any file — <code>.pt</code>, <code>.h5</code>, <code>.pkl</code>, <code>.onnx</code>, <code>.bin</code>, PDFs, ZIPs, etc. The app only reads the file to compute its SHA-256 hash. The file itself is never uploaded to any server — all hashing happens in your browser.</div>
+          </div>
+        </div>
+
+        <!-- Security & Privacy -->
+        <div class="faq-category">
+          <h3 style="font-size: .85rem; font-weight: 700; color: var(--success); margin: 1.5rem 0 .6rem; text-transform: uppercase;">🔐 Security & Privacy</h3>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">Is my data safe? What happens when the server restarts? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">All data is persisted to JSON files in <code>backend/data/</code> on every write. If the server restarts, data is reloaded automatically. On Render's free tier, the disk is ephemeral — data resets on each deploy. For production use, attach a persistent disk.</div>
+          </div>
+        </div>
+
+        <!-- Blockchain Concepts -->
+        <div class="faq-category">
+          <h3 style="font-size: .85rem; font-weight: 700; color: var(--warn); margin: 1.5rem 0 .6rem; text-transform: uppercase;">⛏ Blockchain Concepts</h3>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">What is a Model ID and where do I find it? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">When you register a model, a unique 16-character Model ID is generated (e.g. <code>a3f9b2c1d4e8f7a0</code>). It is automatically copied to your clipboard. You can also find all your Model IDs in the <strong>My Models</strong> tab. Keep this ID — you need it for verification and version history.</div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">How do I verify a model? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">Go to the <strong>Verify</strong> tab → upload the model file → paste the Model ID → click Verify. If the SHA-256 hash of your file matches what's stored on the blockchain, it's verified as intact. If it doesn't match, the model has been modified since registration.</div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">What is Proof-of-Work (PoW) mining? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">Each write operation (register, verify, add version) creates a new blockchain block. Mining means finding a nonce value that makes the block's SHA-256 hash start with <code>0000</code>. This takes thousands of attempts and makes the chain computationally expensive to tamper with. You can see mining time and attempts in the ⛏ badge after each operation.</div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">What does "Simulate Tamper Attack" do? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">It's a safe demo in the Explorer tab. The backend temporarily modifies a block's data, runs the chain validator (which detects the change), then immediately restores the original data. Nothing is permanently changed — it just proves your blockchain can detect tampering.</div>
+          </div>
+        </div>
+
+        <!-- Troubleshooting -->
+        <div class="faq-category">
+          <h3 style="font-size: .85rem; font-weight: 700; color: var(--danger); margin: 1.5rem 0 .6rem; text-transform: uppercase;">⚙️ Troubleshooting</h3>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">What is the rate limit? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">Each username can perform at most <strong>10 write operations</strong> (register, verify, add version) per 60 seconds. This prevents the blockchain from being flooded. If you hit the limit, wait a moment and try again — the Register tab shows your remaining quota after each operation.</div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" onclick="toggleFaq(this)">Why does the app say "Network error"? <span class="faq-arrow">▼</span></button>
+            <div class="faq-a">The backend server may not be running. Make sure you started it with <code>python backend/app.py</code> from the project root. If using the hosted version, the Render free tier may be sleeping — wait 30 seconds and try again after the first request wakes it up.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -896,12 +977,12 @@
         </div>
       </div>
     </div>
-    <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.6rem;font-weight:600;">Enter a username to get started:</div>
-    <div class="welcome-user-row">
-      <input type="text" id="welcomeUsername" placeholder="e.g. alice, mihir, john…" maxlength="32" onkeydown="if(event.key==='Enter')startFromWelcome()" />
-      <button class="btn" onclick="startFromWelcome()" style="white-space:nowrap;">Get Started →</button>
+    <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:1rem;font-weight:600;text-align:center;">Log in or create a free account to securely save and track your model integrity checks:</div>
+    <div class="welcome-user-row" style="display:flex; gap:1rem; justify-content:center;">
+      <button class="btn" onclick="closeWelcome(); openAuthModal('register')" style="white-space:nowrap; padding: .65rem 1.6rem; border-radius: 9px;">Create Account</button>
+      <button class="btn btn-sec" onclick="closeWelcome(); openAuthModal('login')" style="white-space:nowrap; padding: .65rem 1.6rem; border-radius: 9px;">Sign In</button>
     </div>
-    <div class="welcome-footer">Your username is stored locally — no sign-up required. &nbsp;·&nbsp; <a href="#" onclick="event.preventDefault();closeWelcome()" style="color:var(--primary);">Skip for now</a></div>
+    <div class="welcome-footer" style="text-align:center; margin-top:1.5rem; font-size:.85rem;"><a href="#" onclick="event.preventDefault();closeWelcome()" style="color:var(--primary); font-weight:600;">Skip and explore as guest for now</a></div>
   </div>
 </div>
 
@@ -955,6 +1036,7 @@
       <div class="auth-err" id="loginErr"></div>
       <button class="auth-submit" id="loginBtn" type="submit">Login →</button>
       <div class="auth-divider">Don't have an account? <a href="#" style="color:var(--primary);" onclick="event.preventDefault();switchAuthTab('register')">Register here</a></div>
+      <div class="auth-divider" style="margin-top: .6rem;"><a href="#" style="color:var(--text-muted); text-decoration: underline;" onclick="event.preventDefault();closeAuthModal()">Explore as Guest (Limited Features)</a></div>
     </form>
 
     <!-- Register form -->
@@ -974,6 +1056,7 @@
       <div class="auth-err" id="registerErr"></div>
       <button class="auth-submit" id="registerBtn" type="submit">Create Account →</button>
       <div class="auth-divider">Already have an account? <a href="#" style="color:var(--primary);" onclick="event.preventDefault();switchAuthTab('login')">Login here</a></div>
+      <div class="auth-divider" style="margin-top: .6rem;"><a href="#" style="color:var(--text-muted); text-decoration: underline;" onclick="event.preventDefault();closeAuthModal()">Explore as Guest (Limited Features)</a></div>
     </form>
   </div>
 </div>
@@ -1250,8 +1333,16 @@ async function refreshStats() {
     document.getElementById('sModels').textContent = d.totalModels  ?? '—';
     document.getElementById('sVerify').textContent = d.totalVerifications ?? '—';
     document.getElementById('sBlocks').textContent = d.totalBlocks  ?? '—';
+    
+    // Help tab quick stats
+    const hsModels = document.getElementById('helpStatModels'); if (hsModels) hsModels.textContent = d.totalModels ?? '—';
+    const hsVerify = document.getElementById('helpStatVerify'); if (hsVerify) hsVerify.textContent = d.totalVerifications ?? '—';
+    const hsBlocks = document.getElementById('helpStatBlocks'); if (hsBlocks) hsBlocks.textContent = d.totalBlocks ?? '—';
   } catch(e) {
-    ['sModels','sVerify','sBlocks'].forEach(id => document.getElementById(id).textContent = '—');
+    ['sModels','sVerify','sBlocks','helpStatModels','helpStatVerify','helpStatBlocks'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    });
   } finally {
     _statsRefreshing = false;
   }
@@ -2038,7 +2129,24 @@ function startFromWelcome() {
   toast('ok', `Welcome${val ? ', ' + val : ''}! Start by registering a model. 👆`);
 }
 
-// ── FAQ Toggle ──
+// ── FAQ Toggle & Filter ──
+function filterFaq() {
+  const query = document.getElementById('faqSearchInput').value.toLowerCase();
+  document.querySelectorAll('#faqList .faq-category').forEach(cat => {
+    let hasMatch = false;
+    cat.querySelectorAll('.faq-item').forEach(item => {
+      const text = item.textContent.toLowerCase();
+      if (text.includes(query)) {
+        item.style.display = '';
+        hasMatch = true;
+      } else {
+        item.style.display = 'none';
+      }
+    });
+    cat.style.display = hasMatch ? '' : 'none';
+  });
+}
+
 function toggleFaq(btn) {
   const answer = btn.nextElementSibling;
   const isOpen = btn.classList.contains('open');
@@ -2481,6 +2589,160 @@ document.addEventListener('mousedown', function(e) {
     if (container.parentNode) container.parentNode.removeChild(container);
   }, 700);
 }, {passive: true});
+</script>
+
+<script>
+/* ── Guided Tour System ── */
+const TOUR_STEPS = [
+  { target: '#tab-register', tab: 'register', title: '📝 Step 1 — Register a Model', body: 'This is where you register an AI model. Upload any file — your browser computes its SHA-256 hash. The hash is stored on the blockchain. The actual file never leaves your machine.', position: 'bottom' },
+  { target: '#regDrop', tab: 'register', title: '📂 Upload Your Model File', body: 'Drag and drop or click to select any file (.pt, .h5, .pkl, .onnx, PDF, ZIP — anything). The SHA-256 fingerprint is computed instantly in your browser.', position: 'bottom' },
+  { target: '#tab-verify', tab: 'verify', title: '✅ Step 2 — Verify Integrity', body: 'Re-upload the same file later. BlockVerify re-hashes it and compares against the blockchain record. Match = untampered. Mismatch = model was modified.', position: 'bottom' },
+  { target: '#tab-explorer', tab: 'explorer', title: '🔗 Step 3 — Explore the Chain', body: 'Every registration and verification creates a new block. Here you can see every block with its hash, nonce, and transactions. Try the Simulate Tamper Attack button!', position: 'bottom' },
+  { target: '#validateBtn', tab: 'explorer', title: '🛡 Validate Chain Integrity', body: 'Click this to run is_chain_valid() — our 3-check tamper detector. It walks every block and verifies: hash integrity, chain links, and proof-of-work. Should always return ✅ Valid.', position: 'top' },
+  { target: '#tab-models', tab: 'models', title: '📦 Step 4 — My Models', body: 'All your registered models appear here. You can verify, add new versions, download a PDF integrity report, toggle privacy, or deactivate a model.', position: 'bottom' },
+  { target: '#tab-help', tab: 'help', title: '🎉 Tour Complete!', body: 'You now know the full BlockVerify workflow. Register a model → get a Model ID → verify it anytime → all history is permanently on the blockchain. Ready to try it yourself?', position: 'bottom' }
+];
+
+let _tourCurrent = 0;
+let _tourActive = false;
+
+function startGuidedTour() {
+  if (_tourActive) return;
+  _tourActive = true;
+  _tourCurrent = 0;
+  
+  if (!document.getElementById('tourBlocker')) {
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="tourBlocker" class="tour-blocker"></div>
+      <div id="tourSpotlight" class="tour-spotlight"></div>
+      <div id="tourTooltip" class="tour-tooltip"></div>
+    `);
+  }
+  
+  document.getElementById('tourBlocker').style.display = 'block';
+  document.getElementById('tourSpotlight').style.display = 'block';
+  document.getElementById('tourTooltip').style.display = 'block';
+  
+  // Close welcome modal if open
+  document.getElementById('welcomeModal').classList.remove('open');
+  
+  renderTourStep();
+}
+
+function renderTourStep() {
+  const step = TOUR_STEPS[_tourCurrent];
+  
+  // Switch to correct tab
+  const tabBtn = Array.from(document.querySelectorAll('.tab')).find(t => {
+    const attr = t.getAttribute('onclick');
+    return attr && attr.includes(`'${step.tab}'`);
+  });
+  if (tabBtn) switchTab(step.tab, tabBtn);
+  
+  setTimeout(() => {
+    const target = document.querySelector(step.target);
+    if (!target) return endGuidedTour(); // Fail-safe
+    
+    // Scroll into view
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Spotlight setup
+    const rect = target.getBoundingClientRect();
+    const sl = document.getElementById('tourSpotlight');
+    sl.style.left = (rect.left + window.scrollX - 6) + 'px';
+    sl.style.top = (rect.top + window.scrollY - 6) + 'px';
+    sl.style.width = (rect.width + 12) + 'px';
+    sl.style.height = (rect.height + 12) + 'px';
+    
+    // Tooltip HTML
+    const tt = document.getElementById('tourTooltip');
+    const isLast = _tourCurrent === TOUR_STEPS.length - 1;
+    let dots = '';
+    for(let i=0; i<TOUR_STEPS.length; i++) {
+       dots += `<div class="tour-dot ${i <= _tourCurrent ? 'active' : ''}"></div>`;
+    }
+    
+    tt.innerHTML = `
+      <div id="tourArrow" class="tour-arrow"></div>
+      <div class="tour-tooltip-hdr">
+        <span>Step ${_tourCurrent + 1} of ${TOUR_STEPS.length}</span>
+      </div>
+      <div class="tour-tooltip-title">${step.title}</div>
+      <div class="tour-tooltip-body">${step.body}</div>
+      <div class="tour-tooltip-footer">
+        <div class="tour-dots">${dots}</div>
+        <div style="display:flex; gap:8px;">
+          <button class="tour-btn tour-btn-skip" onclick="endGuidedTour()">Skip</button>
+          <button class="tour-btn tour-btn-next" onclick="nextTourStep()">${isLast ? 'Finish 🎉' : 'Next →'}</button>
+        </div>
+      </div>
+    `;
+    
+    // Tooltip position
+    const pos = step.position || 'bottom';
+    const ttRect = tt.getBoundingClientRect();
+    let ttLeft, ttTop;
+    const arrow = document.getElementById('tourArrow');
+    
+    arrow.className = 'tour-arrow'; 
+    if (pos === 'bottom') {
+      ttTop = rect.bottom + window.scrollY + 15;
+      ttLeft = rect.left + window.scrollX;
+      arrow.classList.add('tour-arrow-bottom');
+      arrow.style.left = '20px';
+    } else if (pos === 'top') {
+      ttTop = rect.top + window.scrollY - ttRect.height - 15;
+      ttLeft = rect.left + window.scrollX;
+      arrow.classList.add('tour-arrow-top');
+    } else if (pos === 'right') {
+      ttTop = rect.top + window.scrollY;
+      ttLeft = rect.right + window.scrollX + 15;
+      arrow.classList.add('tour-arrow-left');
+    } else {
+      ttTop = rect.bottom + window.scrollY + 15;
+      ttLeft = rect.left + window.scrollX;
+      arrow.classList.add('tour-arrow-bottom');
+    }
+    
+    // Clamp to viewport bounds
+    const maxW = window.innerWidth;
+    if (ttLeft + 320 > maxW) {
+      ttLeft = maxW - 340;
+      arrow.style.left = Math.min((rect.left + window.scrollX - ttLeft + rect.width/2), 300) + 'px';
+    }
+    if (ttLeft < 10) ttLeft = 10;
+    
+    tt.style.left = ttLeft + 'px';
+    tt.style.top = ttTop + 'px';
+    
+  }, 100);
+}
+
+function nextTourStep() {
+  if (_tourCurrent < TOUR_STEPS.length - 1) {
+    _tourCurrent++;
+    renderTourStep();
+  } else {
+    endGuidedTour();
+  }
+}
+
+function endGuidedTour() {
+  _tourActive = false;
+  localStorage.setItem('bv_tour_done', '1');
+  const b = document.getElementById('tourBlocker');
+  const s = document.getElementById('tourSpotlight');
+  const t = document.getElementById('tourTooltip');
+  if (b) { b.style.display = 'none'; s.style.display = 'none'; t.style.display = 'none'; }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (!localStorage.getItem('bv_tour_done')) {
+    setTimeout(() => {
+      toast('info', `New to BlockVerify? <br><a href="#" onclick="startGuidedTour();return false;" style="color:var(--primary-h);font-weight:700;">Take the guided tour 🧭</a>`, 12000);
+    }, 2000);
+  }
+});
 </script>
 
 </body>
