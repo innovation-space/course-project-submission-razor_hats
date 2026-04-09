@@ -1,9 +1,27 @@
 #pragma version 8
 
-// ─── BlockVerify Clear State Program ───────────────────────────────────
-// Called when a user clears their local state from the contract.
-// This contract uses no local state, so we simply approve.
-// ──────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+//  BlockVerify — Clear State Program
+//  Network  : Algorand Testnet
+//  Language : TEAL v8
+//  Author   : razor_hats team
+// ═══════════════════════════════════════════════════════════════════════
+//
+//  PURPOSE
+//  ─────────────────────────────────────────────────────────────────────
+//  This program is executed when an account calls ClearState to forcibly
+//  remove their local state from the application. Since BlockVerify does
+//  not use any local state (all data is in global state), we simply
+//  approve the clear operation without any side effects.
+//
+//  LOCAL STATE SCHEMA: 0 uints, 0 byte slices (unused)
+//  GLOBAL STATE is NOT affected by ClearState transactions.
+//
+// ═══════════════════════════════════════════════════════════════════════
 
-int 1
+int 1    // Approve the ClearState operation
 return
+
+// ═══════════════════════════════════════════════════════════════════════
+//  END OF CLEAR STATE PROGRAM
+// ═══════════════════════════════════════════════════════════════════════

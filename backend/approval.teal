@@ -1,41 +1,136 @@
 #pragma version 8
 
-// ─── BlockVerify Model Registry Contract ───────────────────────────────
-// Stores: model_id (bytes) → model_hash (bytes) in global state
-// Method: register(model_id, model_hash)
-// Author: razor_hats team
-// Network: Algorand Testnet
-// ──────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+//  BlockVerify — ARC4-Style Model Registry Smart Contract
+//  Network  : Algorand Testnet
+//  Language : TEAL v8 (Transaction Execution Approval Language)
+//  Author   : razor_hats team
+//  Purpose  : Immutable on-chain registry mapping AI model IDs to their
+//             SHA-256 cryptographic fingerprints.
+// ═══════════════════════════════════════════════════════════════════════
+//
+//  GLOBAL STATE SCHEMA
+//  ─────────────────────────────────────────────────────────────────────
+//  Key   : model_id  (bytes, ≤ 64 chars)
+//  Value : sha256    (bytes, 64 chars hex string)
+//  Slots : 64 key-value pairs (configurable at deploy time)
+//
+//  SUPPORTED METHODS
+//  ─────────────────────────────────────────────────────────────────────
+//  "register"   → store model_id → sha256_hash
+//  "deactivate" → overwrite value with "DEACTIVATED" marker
+//  "verify"     → read hash from global state (off-chain via SDK)
+//
+//  TRANSACTION STRUCTURE (ApplicationNoOpTxn)
+//  ─────────────────────────────────────────────────────────────────────
+//  app_args[0] = method selector  ("register" | "deactivate")
+//  app_args[1] = model_id         (bytes, up to 64 bytes)
+//  app_args[2] = model_hash       (bytes, 64 bytes SHA-256 hex)
+//
+// ═══════════════════════════════════════════════════════════════════════
 
-// ── Detect app creation ────────────────────────────────────────────────
+// ── 1. Application Creation ────────────────────────────────────────────
+// On creation (ApplicationID == 0), allow and exit immediately.
+// No initialisation needed — global state is empty by default.
+
 txn ApplicationID
 int 0
 ==
-bnz handle_creation
+bnz handle_creation        // Jump to creation handler if creating
 
-// ── Reject anything other than NoOp ───────────────────────────────────
+// ── 2. Guard: Only NoOp calls are allowed ─────────────────────────────
+// Reject UpdateApplication, DeleteApplication, CloseOut, OptIn etc.
+// This makes the contract logic immutable after deployment.
+
 txn OnCompletion
 int NoOp
 ==
-assert
+assert                     // Fail transaction if not a NoOp call
 
-// ── Route by first arg: must be "register" ────────────────────────────
+// ── 3. Method Routing ─────────────────────────────────────────────────
+// Read the first application argument to determine which method to call.
+
 txna ApplicationArgs 0
 byte "register"
 ==
-assert
+bnz handle_register        // Route to register handler
 
-// ── Store model_id → hash in global state ─────────────────────────────
-// key   = arg[1]  (model_id, up to 64 bytes)
-// value = arg[2]  (SHA-256 fingerprint, 64 bytes hex)
-txna ApplicationArgs 1
-txna ApplicationArgs 2
-app_global_put
+txna ApplicationArgs 0
+byte "deactivate"
+==
+bnz handle_deactivate      // Route to deactivate handler
 
-b done
+// ── 4. Unknown Method ─────────────────────────────────────────────────
+// If no method matched, reject the transaction.
+err
+
+// ── HANDLER: register ─────────────────────────────────────────────────
+// Stores: global[model_id] = sha256_hash
+//
+// Security notes:
+//   - Any caller can register (open registry design)
+//   - For private registry: add txn.Sender verification here
+//   - Hash is stored as raw bytes; decode to hex string off-chain
+
+handle_register:
+
+    // Validate that both model_id and hash arguments were provided
+    txn NumAppArgs
+    int 3                      // must have: method, model_id, hash
+    >=
+    assert
+
+    // Validate model_id length (must be > 0)
+    txna ApplicationArgs 1
+    len
+    int 0
+    >
+    assert
+
+    // Validate hash length (must be > 0)
+    txna ApplicationArgs 2
+    len
+    int 0
+    >
+    assert
+
+    // Write to global state: key = model_id, value = hash
+    txna ApplicationArgs 1     // Push key   (model_id)
+    txna ApplicationArgs 2     // Push value (sha256 hash)
+    app_global_put             // global[model_id] = hash
+
+    b done
+
+// ── HANDLER: deactivate ───────────────────────────────────────────────
+// Overwrites global[model_id] with the sentinel value "DEACTIVATED".
+// The key persists on-chain — immutable record that deactivation occurred.
+// Off-chain code checks for this sentinel to determine active status.
+
+handle_deactivate:
+
+    // Validate that model_id argument was provided
+    txn NumAppArgs
+    int 2                      // must have: method, model_id
+    >=
+    assert
+
+    // Overwrite: global[model_id] = "DEACTIVATED"
+    txna ApplicationArgs 1     // Push key (model_id)
+    byte "DEACTIVATED"         // Push sentinel value
+    app_global_put
+
+    b done
+
+// ── HANDLER: Creation ─────────────────────────────────────────────────
+// Called once when the application is first deployed.
+// No setup required — approve and initialise empty state.
 
 handle_creation:
 
 done:
-int 1
-return
+    int 1                      // Signal success (1 = approve transaction)
+    return
+
+// ═══════════════════════════════════════════════════════════════════════
+//  END OF APPROVAL PROGRAM
+// ═══════════════════════════════════════════════════════════════════════
