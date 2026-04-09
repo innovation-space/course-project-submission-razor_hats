@@ -568,6 +568,12 @@ def algo_contract_info():
         "explorer_url": f"https://lora.algonode.network/testnet/application/{app_id}",
     }), 200
 
+@app.route("/api/algo/network", methods=["GET"])
+def algo_network_stats():
+    data = algorand_client.get_network_stats()
+    return jsonify(data), (200 if data.get("success") else 503)
+
+
 @app.route("/api/stats/activity", methods=["GET"])
 def get_activity():
     """
