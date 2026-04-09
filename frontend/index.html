@@ -653,6 +653,12 @@
     <div class="stat-card"><div class="stat-val" id="sBlocks">—</div><div class="stat-lbl">Algorand Round</div></div>
   </div>
 
+  <!-- Algorand Wallet Link -->
+  <div id="walletAddrBar" style="text-align:center;margin:-0.8rem 0 1.2rem;font-size:.78rem;color:var(--text-muted);">
+    ⛓ Server Wallet: <span id="walletAddrShort" style="font-family:monospace;">loading…</span>
+    <a id="walletAddrLink" href="#" target="_blank" style="color:var(--primary);margin-left:.4rem;font-size:.75rem;">[View on Algorand ↗]</a>
+  </div>
+
   <!-- Activity Chart -->
   <div class="card" style="margin-bottom:1.5rem;padding:1.4rem 1.8rem;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
@@ -1224,7 +1230,7 @@ async function doLogin() {
     updateAuthUI();
     closeAuthModal();
     toast('ok', `Welcome back, ${d.username}! 👋`);
-    refreshStats();
+    refreshStats(); loadWalletAddressBar();
   } catch(e) { _showAuthErr('loginErr', 'Network error. Is the backend running?'); }
   finally { _setAuthLoading('loginBtn', false, 'Login →'); }
 }
@@ -1422,7 +1428,12 @@ async function registerModel() {
             <button class="copy-btn" onclick="copyText('${d.modelId}', this)">Copy ID</button>
           </div>
           <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Algo TxID: <a href="https://lora.algokit.io/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Owner: ${user}</div>
-          
+          <div style="margin-top:.8rem;">
+            <button class="btn" style="font-size:.8rem;padding:.45rem 1rem;background:linear-gradient(135deg,#6c5ce7,#00cec9);border:none;" 
+              onclick="downloadAlgoCertificate('${d.modelId}','${name.replace(/'/g,"\\'")}','${hash}','${d.algoTxId}','${d.round}')">
+              📄 Download Blockchain Certificate
+            </button>
+          </div>
         </div>`;
       toast('ok', `Model "${name}" broadcast to Algorand Testnet!`);
       document.getElementById('regName').value = '';
@@ -2910,6 +2921,136 @@ async function loadContractInfo() {
   } catch(e) {
     out.innerHTML = `<span style="color:var(--danger);">Could not load contract info</span>`;
   }
+}
+
+
+
+
+// ── Wallet Address Bar ────────────────────────────────────────────────
+async function loadWalletAddressBar() {
+  try {
+    const res = await fetch(`${API}/algo/wallet`);
+    const d   = await res.json();
+    if (!d.success) return;
+    const short = d.address.substring(0, 6) + '...' + d.address.substring(d.address.length - 6);
+    const el = document.getElementById('walletAddrShort');
+    const lnk = document.getElementById('walletAddrLink');
+    if (el)  el.textContent = short;
+    if (lnk) lnk.href = d.explorer_url;
+  } catch(e) { /* silent fail */ }
+}
+
+// ── Blockchain Certificate (PDF with QR code) ─────────────────────────
+async function downloadAlgoCertificate(modelId, modelName, modelHash, txid, round) {
+  // Dynamically load jsPDF + QRCode if not already loaded
+  if (!window.jsPDF) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  }
+  if (!window.QRCode) {
+    await loadScript('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js');
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+
+  const W = doc.internal.pageSize.getWidth();
+  const explorerUrl = `https://lora.algokit.io/testnet/transaction/${txid}`;
+  const ts = round ? `Algorand Block Round #${round}` : new Date().toUTCString();
+
+  // ── Background ──
+  doc.setFillColor(13, 17, 30);
+  doc.rect(0, 0, W, 842, 'F');
+
+  // ── Header bar ──
+  doc.setFillColor(108, 92, 231);
+  doc.rect(0, 0, W, 80, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('BlockVerify — Blockchain Integrity Certificate', W / 2, 35, { align: 'center' });
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Algorand Testnet · Cryptographically Verified', W / 2, 58, { align: 'center' });
+
+  // ── Badge ──
+  doc.setFillColor(0, 206, 201);
+  doc.roundedRect(W / 2 - 110, 94, 220, 30, 6, 6, 'F');
+  doc.setTextColor(13, 17, 30);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('✓  VERIFIED ON ALGORAND TESTNET', W / 2, 114, { align: 'center' });
+
+  // ── Info rows ──
+  const rows = [
+    ['Model Name',   modelName],
+    ['Model ID',     modelId],
+    ['SHA-256 Hash', modelHash],
+    ['Algorand TxID', txid],
+    ['Block Round',  round ? `#${round}` : '—'],
+    ['Timestamp',    new Date().toLocaleString()],
+    ['Network',      'Algorand Testnet (Pure Proof-of-Stake)'],
+  ];
+
+  let y = 155;
+  rows.forEach(([label, value]) => {
+    // Label
+    doc.setTextColor(150, 150, 180);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label.toUpperCase(), 60, y);
+
+    // Value box
+    doc.setFillColor(30, 35, 55);
+    doc.roundedRect(55, y + 5, W - 110, 22, 4, 4, 'F');
+    doc.setTextColor(220, 220, 255);
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'normal');
+    // Truncate long strings to fit
+    const maxLen = 85;
+    const displayVal = value && value.length > maxLen ? value.substring(0, maxLen) + '…' : (value || '—');
+    doc.text(displayVal, 65, y + 19);
+
+    y += 46;
+  });
+
+  // ── QR Code ──
+  try {
+    const qrDataUrl = await QRCode.toDataURL(explorerUrl, {
+      width: 120, margin: 1,
+      color: { dark: '#6c5ce7', light: '#0d111e' }
+    });
+    doc.addImage(qrDataUrl, 'PNG', W / 2 - 60, y + 10, 120, 120);
+    doc.setTextColor(150, 150, 180);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Scan to verify this transaction on Algorand Explorer', W / 2, y + 142, { align: 'center' });
+    y += 160;
+  } catch(qrErr) {
+    console.warn('QR generation skipped:', qrErr);
+    y += 20;
+  }
+
+  // ── Footer ──
+  doc.setFillColor(20, 24, 40);
+  doc.rect(0, 800, W, 42, 'F');
+  doc.setTextColor(100, 100, 140);
+  doc.setFontSize(8);
+  doc.text('Generated by BlockVerify · razor_hats team · This certificate is cryptographically anchored to the Algorand blockchain', W / 2, 826, { align: 'center' });
+
+  // ── Save ──
+  const filename = `blockverify-cert-${modelId.substring(0,8)}.pdf`;
+  doc.save(filename);
+  toast('ok', '📄 Certificate downloaded!');
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
 }
 
 
