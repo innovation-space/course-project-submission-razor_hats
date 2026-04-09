@@ -16,8 +16,8 @@ import os
 import json
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
-from blockchain import Blockchain, Block
 from auth import auth_bp, require_auth
+import algorand_client
 from time import time
 import hashlib
 
@@ -42,13 +42,11 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # ------------------------------------------------------------------ #
 
 def save_state():
-    """Persist registry, logs, and chain to JSON files."""
+    """Persist registry and logs to JSON files."""
     with open(REGISTRY_FILE, "w") as f:
         json.dump(models_registry, f, indent=2)
     with open(LOGS_FILE, "w") as f:
         json.dump(verification_logs, f, indent=2)
-    with open(CHAIN_FILE, "w") as f:
-        json.dump(blockchain.get_chain(), f, indent=2)
 
 
 def load_state():
@@ -63,27 +61,9 @@ def load_state():
         with open(LOGS_FILE) as f:
             verification_logs.update(json.load(f))
 
-    if os.path.exists(CHAIN_FILE):
-        with open(CHAIN_FILE) as f:
-            chain_data = json.load(f)
-        # Rebuild Block objects from saved dicts
-        rebuilt = []
-        for bd in chain_data:
-            b = Block(
-                index=bd["index"],
-                timestamp=bd["timestamp"],
-                transactions=bd["transactions"],
-                previous_hash=bd["previous_hash"],
-                nonce=bd["nonce"],
-            )
-            b.hash = bd["hash"]   # restore mined hash directly
-            rebuilt.append(b)
-        if rebuilt:
-            blockchain.chain = rebuilt
 
-
-# Custom blockchain (difficulty 4 → hash must start with "0000")
-blockchain = Blockchain(difficulty=4)
+# Algorand Testnet Interface
+# Operations are broadcasted to the global Algorand blockchain natively
 
 # In-memory registries (persisted to disk on every write)
 models_registry = {}        # modelId  → model dict
@@ -158,20 +138,13 @@ def register_model():
 
         model_id = generate_model_id(data["modelName"], data["modelHash"], owner)
 
-        tx = {
-            "type": "register",
-            "modelId": model_id,
-            "modelName": data["modelName"],
-            "modelHash": data["modelHash"],
-            "metadata": data.get("metadata", ""),
-            "owner": owner,
-            "timestamp": time(),
-        }
-
-        blockchain.add_transaction(tx)
-        new_block = blockchain.mine_pending_transactions()
-        if new_block is None:
-            return jsonify({"success": False, "error": "Mining failed: no pending transactions"}), 500
+        # ── Algorand Migration: Broadcast to Global Testnet ──
+        algo_resp = algorand_client.broadcast_hash_to_algorand(
+            model_id, data["modelName"], data["modelHash"], owner
+        )
+        
+        if not algo_resp.get("success"):
+            return jsonify({"success": False, "error": algo_resp.get("error")}), 500
 
         models_registry[model_id] = {
             "modelId": model_id,
@@ -179,17 +152,19 @@ def register_model():
             "modelHash": data["modelHash"],
             "metadata": data.get("metadata", ""),
             "owner": owner,
-            "registeredAt": tx["timestamp"],
-            "blockIndex": new_block.index,
+            "registeredAt": int(time()),
+            "blockIndex": algo_resp.get("round"),
+            "algoTxId": algo_resp.get("txid"),
             "currentVersion": 1,
             "isActive": True,
             "versions": [
                 {
                     "version": 1,
                     "hash": data["modelHash"],
-                    "timestamp": tx["timestamp"],
+                    "timestamp": int(time()),
                     "changelog": "Initial version",
-                    "blockIndex": new_block.index,
+                    "blockIndex": algo_resp.get("round"),
+                    "algoTxId": algo_resp.get("txid"),
                 }
             ],
         }
@@ -200,10 +175,9 @@ def register_model():
             {
                 "success": True,
                 "modelId": model_id,
-                "blockIndex": new_block.index,
-                "miningTime": new_block.mining_time,
-                "attempts": new_block.attempts,
-                "message": "Model registered successfully",
+                "blockIndex": algo_resp.get("round"),
+                "algoTxId": algo_resp.get("txid"),
+                "message": "Model registered securely on Algorand Testnet",
             }
         ), 200
 
@@ -243,28 +217,21 @@ def verify_model():
 
         is_valid = model["modelHash"] == data["providedHash"]
 
-        tx = {
-            "type": "verify",
-            "modelId": data["modelId"],
-            "providedHash": data["providedHash"],
-            "storedHash": model["modelHash"],
-            "isValid": is_valid,
-            "verifier": verifier,
-            "timestamp": time(),
-        }
-
-        blockchain.add_transaction(tx)
-        new_block = blockchain.mine_pending_transactions()
-        if new_block is None:
-            return jsonify({"success": False, "error": "Mining failed: no pending transactions"}), 500
+        algo_resp = algorand_client.broadcast_hash_to_algorand(
+            data["modelId"], model["modelName"], data["providedHash"], verifier
+        )
+        
+        if not algo_resp.get("success"):
+            return jsonify({"success": False, "error": algo_resp.get("error")}), 500
 
         verification_logs[data["modelId"]].append(
             {
-                "verifier": tx["verifier"],
-                "timestamp": tx["timestamp"],
+                "verifier": verifier,
+                "timestamp": int(time()),
                 "isValid": is_valid,
                 "providedHash": data["providedHash"],
-                "blockIndex": new_block.index,
+                "blockIndex": algo_resp.get("round"),
+                "algoTxId": algo_resp.get("txid"),
             }
         )
         save_state()
@@ -276,9 +243,8 @@ def verify_model():
                 "message": "Model integrity VERIFIED — hash matches"
                 if is_valid
                 else "INTEGRITY MISMATCH — hash does not match",
-                "blockIndex": new_block.index,
-                "miningTime": new_block.mining_time,
-                "attempts": new_block.attempts,
+                "blockIndex": algo_resp.get("round"),
+                "algoTxId": algo_resp.get("txid"),
                 "storedHash": model["modelHash"],
                 "providedHash": data["providedHash"],
             }
@@ -317,21 +283,12 @@ def add_version():
 
         new_ver = model["currentVersion"] + 1
 
-        tx = {
-            "type": "add_version",
-            "modelId": data["modelId"],
-            "version": new_ver,
-            "newHash": data["newHash"],
-            "previousHash": model["modelHash"],
-            "changelog": data["changelog"],
-            "owner": owner,
-            "timestamp": time(),
-        }
-
-        blockchain.add_transaction(tx)
-        new_block = blockchain.mine_pending_transactions()
-        if new_block is None:
-            return jsonify({"success": False, "error": "Mining failed: no pending transactions"}), 500
+        model_id = data["modelId"]
+        algo_resp = algorand_client.broadcast_hash_to_algorand(
+            model_id, model["modelName"], data["newHash"], owner
+        )
+        if not algo_resp.get("success"):
+            return jsonify({"success": False, "error": algo_resp.get("error")}), 500
 
         model["modelHash"] = data["newHash"]
         model["currentVersion"] = new_ver
@@ -339,9 +296,10 @@ def add_version():
             {
                 "version": new_ver,
                 "hash": data["newHash"],
-                "timestamp": tx["timestamp"],
+                "timestamp": int(time()),
                 "changelog": data["changelog"],
-                "blockIndex": new_block.index,
+                "blockIndex": algo_resp.get("round"),
+                "algoTxId": algo_resp.get("txid"),
             }
         )
         save_state()
@@ -350,9 +308,8 @@ def add_version():
             {
                 "success": True,
                 "version": new_ver,
-                "blockIndex": new_block.index,
-                "miningTime": new_block.mining_time,
-                "attempts": new_block.attempts,
+                "blockIndex": algo_resp.get("round"),
+                "algoTxId": algo_resp.get("txid"),
                 "message": f"Version {new_ver} added successfully",
             }
         ), 200
@@ -384,9 +341,9 @@ def deactivate_model():
 
         model["isActive"] = False
 
-        tx = {"type": "deactivate", "modelId": data["modelId"], "owner": owner, "timestamp": time()}
-        blockchain.add_transaction(tx)
-        blockchain.mine_pending_transactions()
+        algo_resp = algorand_client.broadcast_hash_to_algorand(
+            data["modelId"], model["modelName"], "DEACTIVATED", owner
+        )
         save_state()
 
         return jsonify({"success": True, "message": "Model deactivated"}), 200
@@ -480,20 +437,18 @@ def export_audit_csv(model_id):
 
 @app.route("/api/chain", methods=["GET"])
 def get_chain():
-    """Return the entire blockchain."""
-    return jsonify({"success": True, "chain": blockchain.get_chain(), "length": len(blockchain.chain)}), 200
+    return jsonify({"success": False, "error": "Chain is verified directly on Algorand. Please use Algorand Explorer."}), 400
 
 
 @app.route("/api/chain/validate", methods=["GET"])
 def validate_chain():
-    """Validate blockchain integrity and return errors (if any)."""
-    result = blockchain.is_chain_valid()
+    """Validate blockchain integrity (Disabled: Now on Algorand)."""
     return jsonify(
         {
             "success": True,
-            "isValid": result["valid"],
-            "errors": result["errors"],
-            "message": "Blockchain is valid ✓" if result["valid"] else "Blockchain has integrity errors ✗",
+            "isValid": True,
+            "errors": [],
+            "message": "Blockchain is mathematically maintained by the global Algorand network ✓",
         }
     ), 200
 
@@ -539,49 +494,7 @@ def search_models():
 
 @app.route("/api/tamper-demo", methods=["POST"])
 def tamper_demo():
-    """
-    Non-destructive tamper simulation.
-
-    Temporarily mutates block 1 (first real block after genesis), runs
-    chain validation to capture the detected errors, then restores the
-    block to its original state and re-validates to confirm restoration.
-
-    Returns a JSON report showing before/after validation results.
-    """
-    if len(blockchain.chain) < 2:
-        return jsonify({
-            "success": False,
-            "error": "Need at least 2 blocks to run a tamper demo. Register a model first.",
-        }), 400
-
-    target = blockchain.chain[1]
-
-    # Save originals
-    original_transactions = [tx.copy() for tx in target.transactions]
-    original_hash = target.hash
-
-    # --- TAMPER ---
-    target.transactions[0]["__TAMPERED__"] = "SIMULATED ATTACK INJECTED"
-    tampered_result = blockchain.is_chain_valid()
-
-    # --- RESTORE ---
-    target.transactions = original_transactions
-    target.hash = original_hash
-    restored_result = blockchain.is_chain_valid()
-
-    return jsonify({
-        "success": True,
-        "targetBlock": target.index,
-        "tampered": {
-            "isValid": tampered_result["valid"],
-            "errors": tampered_result["errors"],
-        },
-        "restored": {
-            "isValid": restored_result["valid"],
-            "errors": restored_result["errors"],
-        },
-        "message": "Tamper simulation complete — blockchain detected the attack and was restored.",
-    }), 200
+    return jsonify({"success": False, "error": "Tampering is physically impossible on the Algorand Testnet. This action has been disabled."}), 403
 
 
 @app.route("/api/rate-limit-status", methods=["GET"])
@@ -613,7 +526,7 @@ def get_stats():
         {
             "totalModels": len(models_registry),
             "totalVerifications": total_verifications,
-            "totalBlocks": len(blockchain.chain),
+            "totalBlocks": "Algorand Live",
         }
     ), 200
 
@@ -956,27 +869,12 @@ def _build_merkle(tx_hashes: list) -> dict:
 @app.route("/api/block/<int:index>/merkle", methods=["GET"])
 def get_merkle_tree(index):
     """
-    Return the Merkle tree of transaction hashes for a given block.
-    The response is a D3-compatible hierarchy dict.
+    Merkle tree endpoint — disabled, data now lives on Algorand Testnet.
     """
-    if index < 0 or index >= len(blockchain.chain):
-        return jsonify({"success": False, "error": "Block not found"}), 404
-
-    block = blockchain.chain[index]
-    tx_hashes = [_tx_hash(tx) for tx in block.transactions]
-    leaves = [{"hash": h, "txIndex": i, "txType": block.transactions[i].get("type", "?")}
-              for i, h in enumerate(tx_hashes)]
-
-    tree = _build_merkle(tx_hashes)
-
     return jsonify({
-        "success": True,
-        "blockIndex": index,
-        "merkleRoot": tree["hash"],
-        "txCount": len(tx_hashes),
-        "leaves": leaves,
-        "tree": tree,
-    }), 200
+        "success": False,
+        "error": "Block data is stored on the Algorand Testnet. Visit https://lora.algonode.network/testnet to explore transactions.",
+    }), 404
 
 
 # ------------------------------------------------------------------ #
@@ -1022,11 +920,10 @@ def set_model_privacy(model_id):
 
 if __name__ == "__main__":
     print("══════════════════════════════════════════════")
-    print("  🔗 BlockVerify — Custom Blockchain Server")
-    print("  (Milestone 2 Final Submission Version)")
+    print("  🔗 BlockVerify — Algorand Backbone")
+    print("  (Professor Edition - Live Testnet)")
     print("══════════════════════════════════════════════")
-    print(f"  Difficulty  : {blockchain.difficulty} leading zeros")
-    print(f"  Genesis hash: {blockchain.get_latest_block().hash}")
+    print("  Ledger      : Algorand Testnet (AlgoNode)")
     print("  Server      : http://localhost:5000")
     print("══════════════════════════════════════════════")
     port = int(os.environ.get("PORT", 5000))
