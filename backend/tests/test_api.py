@@ -11,27 +11,72 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import app, blockchain, models_registry, verification_logs, _rate_log
-
+from app import app, models_registry, verification_logs, _rate_log
+import algorand_client
 
 # Reset all state before each test so tests don't interfere with each other
 @pytest.fixture(autouse=True)
-def reset_state():
-    """Reset the blockchain, registries, and rate-limit log before each test."""
-    blockchain.chain = [blockchain._create_genesis_block()]
-    blockchain.pending_transactions = []
+def reset_state(monkeypatch):
+    """Reset the registries, rate-limit log, and mock Algorand."""
     models_registry.clear()
     verification_logs.clear()
     _rate_log.clear()
+
+    # Mock Algorand Testnet API
+    global mock_algo_round
+    mock_algo_round = 1000
+
+    def mock_broadcast(model_id, name, hash_val, owner):
+        global mock_algo_round
+        mock_algo_round += 1
+        return {
+            "success": True,
+            "txid": f"MOCK_TXID_{mock_algo_round}",
+            "round": mock_algo_round
+        }
+    
+    monkeypatch.setattr(algorand_client, "broadcast_hash_to_algorand", mock_broadcast)
     yield
 
 
 # Flask test client fixture
+from auth import _make_token
+
+class AuthTestClient:
+    def __init__(self, test_client):
+        self.test_client = test_client
+        self.default_user = "alice"
+
+    def _auth_kwargs(self, kwargs):
+        headers = kwargs.get("headers", {})
+        if "Authorization" not in headers:
+            if headers.get("No-Auth") is True:
+                del headers["No-Auth"]
+            else:
+                user = self.default_user
+                if kwargs.get("json") and isinstance(kwargs["json"], dict):
+                    if "owner" in kwargs["json"]:
+                        user = kwargs["json"]["owner"]
+                    elif "verifier" in kwargs["json"]:
+                        user = kwargs["json"]["verifier"]
+                headers["Authorization"] = f"Bearer {_make_token(user)}"
+        else:
+            if headers.get("No-Auth") is True:
+                del headers["No-Auth"]
+        kwargs["headers"] = headers
+        return kwargs
+
+    def post(self, *args, **kwargs):
+        return self.test_client.post(*args, **self._auth_kwargs(kwargs))
+
+    def get(self, *args, **kwargs):
+        return self.test_client.get(*args, **self._auth_kwargs(kwargs))
+
 @pytest.fixture
 def client():
     app.config["TESTING"] = True
     with app.test_client() as c:
-        yield c
+        yield AuthTestClient(c)
 
 
 # Helper – register a model and return the parsed JSON
@@ -67,13 +112,13 @@ class TestRegister:
         assert resp.status_code == 400
 
     def test_register_missing_owner(self, client):
-        resp = client.post("/api/register", json={"modelName": "M", "modelHash": "h"})
-        assert resp.status_code == 400
+        # Without auth header, it should be intercepted by JWT middleware as 401
+        resp = client.post("/api/register", json={"modelName": "M", "modelHash": "h"}, headers={"No-Auth": True})
+        assert resp.status_code == 401
 
     def test_register_creates_block(self, client):
-        before = len(blockchain.chain)
-        _register(client)
-        assert len(blockchain.chain) == before + 1
+        resp = _register(client)
+        assert resp.get_json()["algoTxId"] is not None
 
     def test_register_stores_in_registry(self, client):
         data = _register(client).get_json()
@@ -128,13 +173,6 @@ class TestVerify:
     def test_verify_missing_hash(self, client):
         resp = client.post("/api/verify", json={"modelId": "x"})
         assert resp.status_code == 400
-
-    def test_verify_creates_block(self, client):
-        # Each verification should mine a new block
-        model_id = _register(client).get_json()["modelId"]
-        before = len(blockchain.chain)
-        client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123"})
-        assert len(blockchain.chain) == before + 1
 
     def test_verify_logged_in_audit(self, client):
         # Verification result should be saved to the audit log
@@ -249,46 +287,6 @@ class TestReadEndpoints:
 # ═══════════════════════════════════════════════════════════════════
 
 
-class TestChainEndpoints:
-
-    def test_get_chain(self, client):
-        resp = client.get("/api/chain")
-        data = resp.get_json()
-        assert data["success"] is True
-        assert data["length"] >= 1
-
-    def test_get_chain_grows_after_register(self, client):
-        # Each registration mines a block, so chain length should increase
-        before = client.get("/api/chain").get_json()["length"]
-        _register(client)
-        after = client.get("/api/chain").get_json()["length"]
-        assert after == before + 1
-
-    def test_validate_chain_valid(self, client):
-        _register(client)
-        resp = client.get("/api/chain/validate")
-        data = resp.get_json()
-        assert data["isValid"] is True
-
-    def test_get_stats(self, client):
-        _register(client)
-        resp = client.get("/api/stats")
-        data = resp.get_json()
-        assert data["totalModels"] == 1
-        assert data["totalBlocks"] >= 2
-
-    def test_stats_count_verifications(self, client):
-        model_id = _register(client).get_json()["modelId"]
-        client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123"})
-        data = client.get("/api/stats").get_json()
-        assert data["totalVerifications"] == 1
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  /api/deactivate
-# ═══════════════════════════════════════════════════════════════════
-
-
 class TestDeactivate:
 
     def test_deactivate_success(self, client):
@@ -341,8 +339,8 @@ class TestEdgeCases:
 
     def test_add_version_missing_owner(self, client):
         model_id = _register(client, owner="alice").get_json()["modelId"]
-        resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "h", "changelog": "c"})
-        assert resp.status_code == 400
+        resp = client.post("/api/add-version", json={"modelId": model_id, "newHash": "h", "changelog": "c"}, headers={"No-Auth": True})
+        assert resp.status_code == 401
 
     def test_multiple_versions_increment(self, client):
         # Each new version should increment the version counter by exactly 1
@@ -424,77 +422,3 @@ class TestSearch:
 # ═══════════════════════════════════════════════════════════════════
 
 
-class TestTamperDemo:
-
-    def test_tamper_demo_requires_two_blocks(self, client):
-        # Genesis-only chain should be rejected
-        resp = client.post("/api/tamper-demo")
-        assert resp.status_code == 400
-        assert resp.get_json()["success"] is False
-
-    def test_tamper_demo_success(self, client):
-        _register(client)  # mines block 1
-        resp = client.post("/api/tamper-demo")
-        data = resp.get_json()
-        assert resp.status_code == 200
-        assert data["success"] is True
-
-    def test_tamper_demo_detects_attack(self, client):
-        _register(client)
-        data = client.post("/api/tamper-demo").get_json()
-        assert data["tampered"]["isValid"] is False
-        assert len(data["tampered"]["errors"]) > 0
-
-    def test_tamper_demo_restores_chain(self, client):
-        _register(client)
-        data = client.post("/api/tamper-demo").get_json()
-        assert data["restored"]["isValid"] is True
-        assert data["restored"]["errors"] == []
-
-    def test_tamper_demo_chain_still_valid_after(self, client):
-        # Running the demo must leave the real chain intact
-        _register(client)
-        client.post("/api/tamper-demo")
-        result = client.get("/api/chain/validate").get_json()
-        assert result["isValid"] is True
-
-    def test_tamper_demo_response_fields(self, client):
-        _register(client)
-        data = client.post("/api/tamper-demo").get_json()
-        assert "targetBlock" in data
-        assert "tampered" in data
-        assert "restored" in data
-        assert data["targetBlock"] == 1
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  Mining metrics in responses
-# ═══════════════════════════════════════════════════════════════════
-
-
-class TestMiningMetrics:
-
-    def test_register_returns_mining_time(self, client):
-        data = _register(client).get_json()
-        assert "miningTime" in data
-        assert isinstance(data["miningTime"], (int, float))
-
-    def test_register_returns_attempts(self, client):
-        data = _register(client).get_json()
-        assert "attempts" in data
-        assert isinstance(data["attempts"], int)
-        assert data["attempts"] >= 1
-
-    def test_verify_returns_mining_metrics(self, client):
-        model_id = _register(client).get_json()["modelId"]
-        data = client.post("/api/verify", json={"modelId": model_id, "providedHash": "abc123"}).get_json()
-        assert "miningTime" in data
-        assert "attempts" in data
-
-    def test_add_version_returns_mining_metrics(self, client):
-        model_id = _register(client, owner="alice").get_json()["modelId"]
-        data = client.post("/api/add-version", json={
-            "modelId": model_id, "newHash": "v2", "changelog": "c", "owner": "alice"
-        }).get_json()
-        assert "miningTime" in data
-        assert "attempts" in data
