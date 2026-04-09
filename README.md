@@ -385,5 +385,35 @@ Indexer:  https://testnet-idx.algonode.cloud/v2/transactions/<TXID>
 ```
 
 ---
+##Screen Shots Of Website
 
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/1ecc2a3c-d53d-4843-aa50-acd185237942" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/10c2d937-d723-4d88-bd71-76ebb69547a8" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/a18c35c7-0fb3-4bbb-aa91-33a7e62b62a4" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/1fbee48a-515d-451f-a3aa-e7fae9c42225" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/71de88db-a4a5-4076-a7c7-146e0d606c1b" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/55b49d5b-cdda-4482-be4c-4250382a388d" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/fce61c24-e80d-4287-be4b-ade4b7e003fb" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/ddabe1f8-2f72-4fc7-8946-82ac7c75f4e8" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/7c2c8f50-a0ab-4879-8208-30cde6ffd205" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/fb6c4ee4-69e6-4a0a-87ff-ebea190f0c54" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/d1998f37-00a4-4b64-bb5a-8c8d2b9e4e3d" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/abb0e557-096a-4270-8e06-0947379345a5" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/f468205d-79d2-4ac5-bb7b-2324e999a68f" />
+
+<img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/a26e9642-a146-4cd5-b299-b6b2f8c1bb24" />
+
+---
 > *"Trustless verification of AI models — not because we say so, but because the blockchain says so."*
