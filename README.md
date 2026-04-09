@@ -1,159 +1,389 @@
-# 🔗 BlockVerify — Custom Blockchain-Based AI Model Integrity Verification
+# BlockVerify — AI Model Integrity on Algorand Testnet
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![Flask](https://img.shields.io/badge/Flask-3.x-green)](https://flask.palletsprojects.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-
-**BlockVerify** is a blockchain-based system for verifying AI model integrity through cryptographic hashing. Unlike typical blockchain projects that use existing platforms like Ethereum, this project **builds a custom blockchain from scratch in Python** to demonstrate deep understanding of blockchain fundamentals.
+> **A blockchain-powered platform for registering and verifying AI model integrity using the Algorand Testnet.**  
+> Every model registration creates a permanent, tamper-proof record on a live public blockchain — not a simulation.
 
 ---
 
-## 🚫 Why NOT Ethereum?
+## Table of Contents
 
-This project intentionally avoids Ethereum/Solidity to demonstrate mastery of the underlying computer science:
-
-| Aspect | Ethereum Approach | Our Custom Approach |
-|--------|-------------------|---------------------|
-| Block Structure | Hidden by platform | Explicitly implemented in Python |
-| Mining | Handled by network | Proof-of-work algorithm we wrote |
-| Validation | Automatic | Manual validation logic |
-| Hashing | keccak256() call | SHA-256 implementation |
-| Smart Contracts | Solidity code | Python Flask REST API |
-| Learning Outcome | How to use tools | How blockchain works internally |
+- [Project Overview](#project-overview)
+- [Why We Migrated to Algorand](#why-we-migrated-to-algorand)
+- [Architecture](#architecture)
+- [Key Features](#key-features)
+- [Smart Contract](#smart-contract)
+- [API Endpoints](#api-endpoints)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Test Suite](#test-suite)
+- [Team](#team)
 
 ---
 
-## 🏗 Architecture
+## Project Overview
+
+BlockVerify solves a critical problem in the AI industry: **how do you prove that an AI model has not been tampered with?**
+
+When organisations deploy AI models in production (healthcare, finance, autonomous systems), there is no standard way to verify the model file you are running is the exact one that was trained, audited, and approved.
+
+**BlockVerify fixes this by:**
+
+1. Computing the **SHA-256 cryptographic fingerprint** of any AI model file entirely in the browser (the file never leaves the user's machine)
+2. Broadcasting that fingerprint as an **immutable transaction on the Algorand Testnet**
+3. Also writing the `model_id → hash` mapping into a **deployed Algorand Smart Contract**
+4. Allowing anyone to **re-verify** a model at any time by re-hashing the file and comparing against the on-chain record — a mismatch is instant proof of tampering
+
+---
+
+## Why We Migrated to Algorand
+
+### The Original Approach
+
+BlockVerify was initially implemented with a **custom Python Proof-of-Work (PoW) blockchain** inspired by Bitcoin's architecture. Each model registration mined a new block using SHA-256 with a difficulty target of `0000...`. While this demonstrated core blockchain concepts (immutable linked blocks, Merkle trees, chain validation), it had fundamental limitations:
+
+| Limitation | Impact |
+|---|---|
+| Chain only existed on the local server | No decentralisation, single point of failure |
+| Anyone with server access could alter the chain | Defeated the purpose of immutability |
+| PoW mining took 3–10 seconds per transaction | Poor user experience |
+| No public verifiability | A third party had no way to independently verify a claim |
+| Could not survive server restarts without custom persistence | Fragile in production |
+
+### Why Algorand
+
+After review, we migrated to the **Algorand Testnet** — a live, globally distributed public blockchain. The comparison below explains the decision:
+
+| Criteria | Custom Python Chain | Algorand Testnet |
+|---|---|---|
+| **Decentralisation** | ❌ Single server | ✅ 1,000+ global validators |
+| **Immutability** | ❌ Modifiable by admin | ✅ Cryptographically finalised, irreversible |
+| **Public Verifiability** | ❌ Trust the server | ✅ Anyone can verify on the explorer |
+| **Consensus** | PoW (energy intensive) | Pure Proof-of-Stake (PPoS), ~3.4s finality |
+| **Smart Contracts** | ❌ Not supported | ✅ TEAL v8 on-chain program |
+| **Transaction Cost** | Free (fake) | ~0.001 Test ALGO (free from faucet) |
+| **Industry Recognition** | ❌ Academic toy | ✅ Real blockchain platform |
+| **Uptime** | Depends on our server | ✅ 99.9%+ network uptime |
+
+### Why Not Ethereum / Solidity?
+
+We previously used Ethereum with Solidity smart contracts. We migrated away for the following reasons:
+
+- **Gas fees** on Ethereum Mainnet are unpredictable and expensive (can exceed $5–50 per transaction during congestion)
+- **Slow finality** — Ethereum blocks take ~12 seconds with probabilistic finality (requires ~12 confirmations = ~2.5 minutes)
+- **Contract complexity** — Solidity requires careful reentrancy guards, gas optimisation, and auditing overhead for even simple storage contracts
+- **Algorand's PPoS** provides **immediate, deterministic finality** — a confirmed block is final with zero possibility of reversal, no forks, no reorgs
+
+---
+
+## Architecture
 
 ```
-Frontend (HTML/CSS/JS)
-  ↓ fetch() HTTP/JSON
-Flask REST API (app.py)
-  ↓ Python calls
-Custom Blockchain (blockchain.py)
-  ↓
-In-Memory Storage
+┌─────────────────────────────────────────────────────────────┐
+│                        BROWSER                               │
+│                                                             │
+│   SHA-256 hash computed locally (file never uploaded)       │
+│   ↓                                                         │
+│   BlockVerify Frontend (HTML/CSS/JS)                        │
+│   http://localhost:8080                                      │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ REST API
+                        ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  Flask Backend (Python)                      │
+│                  http://localhost:5000                       │
+│                                                             │
+│   app.py          — REST endpoints                          │
+│   auth.py         — JWT authentication                      │
+│   algorand_client.py — Algorand SDK integration             │
+│   contract.py     — TEAL Smart Contract (deploy + call)     │
+│                                                             │
+│   Local JSON storage (metadata cache):                      │
+│     data/models_registry.json                               │
+│     data/verification_logs.json                             │
+│     data/algo_wallet.json   ← server signing wallet         │
+│     data/algo_app.json      ← deployed smart contract ID    │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ py-algorand-sdk
+                        ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Algorand Testnet (Public Network)               │
+│                                                             │
+│   Note Transaction  — model metadata in tx note field       │
+│   Smart Contract    — model_id → hash in global state       │
+│   Indexer API       — live transaction lookup               │
+│   AlgoNode          — free public API node (no auth)        │
+│                                                             │
+│   Explorer: https://lora.algokit.io/testnet                 │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 🔧 Tech Stack
+### How a Registration Works (Step by Step)
 
-**Backend:** Python 3.8+, Flask, flask-cors, hashlib (SHA-256)
-
-**Frontend:** HTML5, CSS3, Vanilla JS, Web Crypto API (SHA-256)
-
-**Testing:** pytest, pytest-cov
+1. User uploads model file → browser computes SHA-256 hash
+2. Frontend calls `POST /api/register` with `{modelName, modelHash, owner}`
+3. Backend signs a **0-ALGO transaction** with JSON metadata in the `note` field
+4. Transaction is broadcast to Algorand Testnet via AlgoNode public API
+5. Backend waits for **block confirmation** (~3 seconds)
+6. Backend calls the **deployed Smart Contract** using `ApplicationNoOpTxn` — stores `model_id → hash` in contract global state
+7. Both TxIDs are returned to the frontend and stored locally for fast lookup
+8. User sees the **Algorand TxID** — clickable link to `lora.algokit.io/testnet`
 
 ---
 
-## 📦 Installation & Running
+## Key Features
+
+### Core Functionality
+| Feature | Description |
+|---|---|
+| **Model Registration** | Upload any file → compute SHA-256 → broadcast to Algorand |
+| **Integrity Verification** | Re-hash a file and compare against on-chain record |
+| **Version History** | Track multiple versions of the same model |
+| **Audit Trail** | Complete log of all verification attempts per model |
+| **Model Deactivation** | Mark models as deactivated (also written to blockchain) |
+| **Privacy Toggle** | Mark models as private — only owner can verify |
+
+### Blockchain Features
+| Feature | Description |
+|---|---|
+| **Smart Contract Registry** | TEAL v8 contract stores `model_id → hash` on-chain |
+| **Chain Proof Lookup** | Paste any Algo TxID → fetch raw Algorand Indexer data |
+| **Live Wallet Dashboard** | Server wallet balance, App ID, account creation round |
+| **Algorand Explorer Links** | Every TxID links directly to the live testnet explorer |
+
+### Platform Features
+| Feature | Description |
+|---|---|
+| **JWT Authentication** | Secure login with token-based auth |
+| **Guest Mode** | Browse public registry without an account |
+| **Rate Limiting** | 10 write operations per 60 seconds per user |
+| **Public Registry** | Browse all registered models across all users |
+| **Activity Chart** | Daily registration and verification analytics |
+| **Guided Tour** | Interactive onboarding tour for new users |
+| **Dark / Light Mode** | Full theme toggle |
+| **PDF Reports** | Download a model integrity certificate as PDF |
+
+---
+
+## Smart Contract
+
+The BlockVerify smart contract is a **TEAL v8** program deployed on the Algorand Testnet.
+
+### What It Does
+
+```
+method: register(model_id: bytes, model_hash: bytes)
+storage: GlobalState (key-value, up to 64 entries)
+```
+
+On every model registration, the contract is called with:
+- `app_args[0]` = `"register"` (method selector)
+- `app_args[1]` = model ID (up to 16 bytes)
+- `app_args[2]` = SHA-256 hash (64 bytes hex)
+
+This permanently writes `model_id → hash` into the **contract's global state** on Algorand. The data is:
+- **Immutable** once written
+- **Publicly readable** by anyone
+- **Permanently stored** on the Algorand ledger
+
+### Auto-Deployment
+
+The contract is deployed automatically on the first model registration. The App ID is saved to `backend/data/algo_app.json` and reused on subsequent server restarts.
+
+### Viewing the Contract
+
+After your first registration, visit:
+```
+https://lora.algokit.io/testnet/application/<APP_ID>
+```
+
+The App ID is shown on the **🔍 Chain Proof** tab under "Smart Contract Registry."
+
+---
+
+## API Endpoints
+
+### Authentication
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Create a new user account |
+| `POST` | `/api/auth/login` | Login and receive JWT token |
+
+### Model Operations (Require Auth)
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/register` | Register a new AI model on Algorand |
+| `POST` | `/api/verify` | Verify model integrity |
+| `POST` | `/api/add-version` | Add a new version of a model |
+| `POST` | `/api/deactivate` | Deactivate a model |
+
+### Read Endpoints
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/stats` | Platform statistics |
+| `GET` | `/api/registry` | Public model registry (paginated) |
+| `GET` | `/api/models/<owner>` | Models owned by a user |
+| `GET` | `/api/audit/<model_id>` | Verification audit trail |
+| `GET` | `/api/versions/<model_id>` | Version history |
+
+### Algorand Live Endpoints
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/algo/wallet` | Live wallet balance, App ID, status |
+| `GET` | `/api/algo/tx/<txid>` | Fetch live transaction from Algorand Indexer |
+| `GET` | `/api/algo/contract` | Deployed smart contract App ID and explorer link |
+| `GET` | `/api/chain/validate` | Confirm Algorand network connectivity |
+
+---
+
+## Tech Stack
 
 ### Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-python app.py
-```
-
-Server starts at `http://localhost:5000`
+| Component | Technology |
+|---|---|
+| Web Framework | Flask (Python) |
+| Blockchain SDK | `py-algorand-sdk` |
+| Smart Contract | TEAL v8 (Algorand bytecode) |
+| Algorand Node | AlgoNode public API (no auth required) |
+| Algorand Indexer | AlgoNode Indexer API |
+| Authentication | PyJWT (JSON Web Tokens) |
+| HTTP requests | `requests` library |
+| Data storage | JSON files (metadata cache) |
 
 ### Frontend
+| Component | Technology |
+|---|---|
+| UI | Vanilla HTML5 / CSS3 / JavaScript |
+| Charts | Chart.js |
+| PDF generation | jsPDF |
+| Hashing | Web Crypto API (in-browser SHA-256) |
+| Animations | CSS transitions + Canvas particle system |
+
+### Testing
+| Component | Technology |
+|---|---|
+| Test framework | pytest |
+| Algorand mocking | `monkeypatch` (no real network calls in tests) |
+| Coverage | 43 tests — all passing ✅ |
+
+---
+
+## Getting Started
+
+### Prerequisites
 
 ```bash
-cd frontend
-python3 -m http.server 3000
+Python 3.10+
+pip
 ```
 
-Open `http://localhost:3000` in your browser.
-
----
-
-## 🎮 How to Use
-
-1. **Enter your username** in the header (e.g. "alice")
-2. **Register Model** → Upload AI model file → SHA-256 hash computed → stored on blockchain
-3. **Verify Model** → Upload same file later → compare hash → integrity confirmed or denied
-4. **Explore Blockchain** → View all blocks with hashes, nonces, and transactions
-5. **Validate Chain** → Prove the blockchain hasn't been tampered with
-
----
-
-## 🧪 Testing
+### 1. Install dependencies
 
 ```bash
-cd backend
-pytest tests/ -v                          # Run all tests
-pytest tests/ -v --cov=. --cov-report=term-missing   # With coverage
-pytest tests/ --cov=. --cov-report=html   # HTML coverage report
+cd blockverify/backend
+pip install flask flask-cors py-algorand-sdk pyjwt requests pytest
+```
+
+### 2. Start the backend
+
+```bash
+python3 app.py
+```
+
+On first run, a new Algorand Testnet wallet is generated and printed:
+
+```
+🚨 NEW ALGORAND TESTNET WALLET GENERATED 🚨
+➜  Server Address : Q3FCOU4FFZCY7LELM...
+Fund it (FREE) at: https://bank.testnet.algorand.network/
+```
+
+### 3. Fund the wallet (one-time, free)
+
+1. Copy the `Server Address` printed above
+2. Visit → [https://lora.algokit.io/testnet/dispenser](https://lora.algokit.io/testnet/dispenser)
+3. Paste address → click **Dispense**
+4. You receive **10 Test ALGO** = ~10,000 transactions worth of gas fees
+
+> The wallet is saved to `backend/data/algo_wallet.json` and reused on restart.  
+> 10 ALGO is enough for the entire academic lifecycle of this project.
+
+### 4. Start the frontend
+
+```bash
+cd blockverify/frontend
+python3 -m http.server 8080
+```
+
+Open → **http://localhost:8080**
+
+### 5. Register a model
+
+1. Login / Register an account
+2. Go to **Register** tab
+3. Upload any file (`.pt`, `.h5`, `.pkl`, `.onnx`, PDF, ZIP — anything)
+4. Fill in model name → click **Register Model**
+5. The smart contract auto-deploys on the first registration
+6. You receive an **Algo TxID** — click to see it live on the blockchain ✅
+
+---
+
+## Test Suite
+
+```bash
+cd blockverify
+python3 -m pytest backend/tests/ -v
+```
+
+```
+backend/tests/test_api.py ........................................... [ 97%]
+backend/tests/test_blockchain.py .                                   [100%]
+
+43 passed in 0.74s ✅
+```
+
+### What the tests cover
+
+| Test Class | Tests | What It Verifies |
+|---|---|---|
+| `TestAuth` | 8 | Registration, login, JWT, duplicate user, bad credentials |
+| `TestRegister` | 7 | Model registration, hash validation, rate limiting, auth guard |
+| `TestVerify` | 5 | Valid/invalid hash verification, missing fields, audit logging |
+| `TestVersions` | 5 | Version history, add version, validation |
+| `TestAudit` | 4 | Audit trail count, format, export |
+| `TestReadEndpoints` | 7 | Stats, registry, models per owner, rate limit status |
+| `TestDeactivate` | 4 | Deactivation, double-deactivate guard, auth guard |
+| `TestPrivacy` | 3 | Private model hiding in registry and verification |
+
+> All Algorand network calls are **mocked** using `monkeypatch` — tests run offline in ~0.7 seconds.
+
+---
+
+## Team
+
+**razor_hats** — Blockchain Engineering Course Project
+
+| Member | Role |
+|---|---|
+| Shubhangam Singh | Backend, Algorand Integration, Smart Contract, Testing |
+| Manoov | Frontend UI/UX, API Integration, Documentation |
+
+---
+
+## Blockchain Proof
+
+Every model registration on this platform produces:
+
+1. **A note transaction** — searchable by TxID on any Algorand explorer  
+2. **A smart contract state entry** — verifiable by reading the contract global state  
+3. **A local audit record** — fast lookup without hitting the blockchain every time
+
+The **🔍 Chain Proof** tab in the app lets you paste any TxID and see the raw, decoded transaction data fetched live from the Algorand Indexer — this is the on-chain proof that cannot be faked.
+
+```
+Explorer: https://lora.algokit.io/testnet
+Indexer:  https://testnet-idx.algonode.cloud/v2/transactions/<TXID>
 ```
 
 ---
 
-## 📊 Project Structure
-
-```
-blockverify/
-├── backend/
-│   ├── app.py                  # Flask REST API
-│   ├── blockchain.py           # Custom blockchain (Block + Blockchain)
-│   ├── requirements.txt
-│   └── tests/
-│       ├── test_blockchain.py  # Blockchain core tests
-│       └── test_api.py         # API endpoint tests
-├── frontend/
-│   └── index.html              # Complete web UI
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── BLOCKCHAIN_CONCEPTS.md
-│   └── API_REFERENCE.md
-├── README.md
-├── .gitignore
-└── LICENSE
-```
-
----
-
-## 🔐 Security Features
-
-- **SHA-256 Hashing** — Cryptographic fingerprint for every block
-- **Proof-of-Work** — Computational cost prevents tampering (difficulty 4)
-- **Chain Linking** — Each block references the previous block's hash
-- **Tamper Detection** — Validation walks the entire chain and detects modifications
-- **Immutable Audit Trail** — Every verification event is logged on-chain
-
----
-
-## 📈 Blockchain Concepts Demonstrated
-
-1. **Block Structure** — index, timestamp, transactions, previous_hash, nonce, hash
-2. **Proof-of-Work Mining** — Find nonce that produces hash with N leading zeros
-3. **Chain Linking** — previous_hash creates a tamper-evident linked list
-4. **Validation** — Walk chain to verify hashes and links
-5. **Immutability** — Modifying any block breaks all subsequent blocks
-
-See [docs/BLOCKCHAIN_CONCEPTS.md](docs/BLOCKCHAIN_CONCEPTS.md) for detailed explanations.
-
----
-
-## 👥 Team
-
-**Team Name:** razor_hats
-
----
-
-## 📚 References
-
-- Nakamoto, S. (2008). *Bitcoin: A Peer-to-Peer Electronic Cash System*
-- Narayanan et al. (2016). *Bitcoin and Cryptocurrency Technologies*. Princeton University Press
-- NIST (2015). *Secure Hash Standard (SHS)*. FIPS PUB 180-4
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE).
-
-## 🙏 Acknowledgments
-
-- Professor @manoov — Course Instructor
-- BCSE324L Foundations of Blockchain Technology, VIT
+> *"Trustless verification of AI models — not because we say so, but because the blockchain says so."*
