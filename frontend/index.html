@@ -680,7 +680,8 @@
     <button class="tab"         onclick="switchTab('models',this)" data-tip="View and manage all AI models registered under your account.">📦 My Models</button>
     <button class="tab"         onclick="switchTab('registry',this)" data-tip="Browse the public ledger — all models registered by all users on this blockchain.">🌐 Registry</button>
     <button class="tab"         onclick="switchTab('explorer',this)" data-tip="Explore the public Algorand Testnet ledger — all registrations and verifications are broadcast as immutable transactions.">🔗 Explorer</button>
-    <button class="tab"         onclick="switchTab('help',this)" data-tip="FAQs, quick-start guide, and documentation for all BlockVerify features.">❓ Help</button>
+    <button class="tab"         onclick="switchTab('proof',this)" data-tip="Look up any Algorand TxID and see the live on-chain transaction data — raw proof your data is on the blockchain.">🔍 Chain Proof</button>
+        <button class="tab"         onclick="switchTab('help',this)" data-tip="FAQs, quick-start guide, and documentation for all BlockVerify features.">❓ Help</button>
   </div>
 
   <!-- Register -->
@@ -819,7 +820,7 @@
           <div style="font-weight:700;font-size:1.05rem;margin-bottom:.25rem;">Connected to Algorand Testnet</div>
           <div style="font-size:.82rem;color:var(--text-muted);">Consensus: Pure Proof-of-Stake (PPoS) &nbsp;·&nbsp; Finality: ~3.4 s &nbsp;·&nbsp; Node: AlgoNode Public API</div>
         </div>
-        <a href="https://lora.algonode.network/testnet" target="_blank" class="btn" style="text-decoration:none;white-space:nowrap;">Open Algorand Explorer ↗</a>
+        <a href="https://lora.algokit.io/testnet" target="_blank" class="btn" style="text-decoration:none;white-space:nowrap;">Open Algorand Explorer ↗</a>
       </div>
 
       <!-- Info cards -->
@@ -830,7 +831,7 @@
         </div>
         <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:1rem;">
           <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:.4rem;">Verify a Transaction</div>
-          <div style="font-size:.88rem;line-height:1.5;">After any operation, copy the <strong>Algo TxID</strong> shown in the result and paste it at <a href="https://lora.algonode.network/testnet" target="_blank" style="color:var(--primary);">lora.algonode.network/testnet</a> to see the full on-chain proof.</div>
+          <div style="font-size:.88rem;line-height:1.5;">After any operation, copy the <strong>Algo TxID</strong> shown in the result and paste it at <a href="https://lora.algokit.io/testnet" target="_blank" style="color:var(--primary);">allo.info</a> to see the full on-chain proof.</div>
         </div>
         <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:1rem;">
           <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:.4rem;">Chain Integrity</div>
@@ -843,6 +844,33 @@
         <a href="https://bank.testnet.algorand.network/" target="_blank" class="btn btn-sec" style="text-decoration:none;">Get Test ALGO 💰</a>
       </div>
       <div id="chainValid" style="margin-top:.8rem;"></div>
+    </div>
+  </div>
+
+
+  <!-- Blockchain Proof Tab -->
+  <div class="tab-content" id="tab-proof">
+    <div class="card">
+      <h2>🔍 Blockchain Proof Lookup</h2>
+      <p class="subtitle">Paste any Algorand TxID to fetch the live on-chain transaction directly from the Algorand Indexer — raw, verified blockchain data.</p>
+
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1.2rem;">
+        <input type="text" id="proofTxId" placeholder="Paste Algorand TxID here…" style="flex:1;min-width:260px;font-family:monospace;font-size:.85rem;" />
+        <button class="btn" id="proofBtn" onclick="lookupProof()">🔎 Fetch Proof</button>
+      </div>
+      <div id="proofResult"></div>
+
+      <div style="margin-top:1.4rem;border-top:1px solid var(--border);padding-top:1.2rem;">
+        <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:.8rem;">⛓ Smart Contract Registry</div>
+        <div id="contractInfo" style="font-size:.88rem;color:var(--text-muted);">Loading contract info…</div>
+      </div>
+    </div>
+
+    <!-- Wallet Info Card -->
+    <div class="card" style="margin-top:1rem;">
+      <h2>👛 Server Wallet — Algorand Testnet</h2>
+      <p class="subtitle">Live account stats for the BlockVerify server wallet that signs every transaction.</p>
+      <div id="walletInfo" style="min-height:60px;">Loading…</div>
     </div>
   </div>
 
@@ -941,7 +969,7 @@
           </div>
           <div class="faq-item">
             <button class="faq-q" onclick="toggleFaq(this)">How does Algorand secure my data? <span class="faq-arrow">▼</span></button>
-            <div class="faq-a">Every write operation (register, verify, add version) is broadcast to the <strong>Algorand Testnet</strong> as a signed transaction. The model metadata is embedded in the transaction's immutable <code>note</code> field. Algorand uses <strong>Pure Proof-of-Stake (PPoS)</strong> — no energy-hungry mining, finalized in seconds with the same cryptographic guarantees. Every transaction gets a permanent <strong>TxID</strong> verifiable live on <a href="https://lora.algonode.network/testnet" target="_blank" style="color:var(--primary);">Algorand Explorer ↗</a>.</div>
+            <div class="faq-a">Every write operation (register, verify, add version) is broadcast to the <strong>Algorand Testnet</strong> as a signed transaction. The model metadata is embedded in the transaction's immutable <code>note</code> field. Algorand uses <strong>Pure Proof-of-Stake (PPoS)</strong> — no energy-hungry mining, finalized in seconds with the same cryptographic guarantees. Every transaction gets a permanent <strong>TxID</strong> verifiable live on <a href="https://lora.algokit.io/testnet" target="_blank" style="color:var(--primary);">Algorand Explorer ↗</a>.</div>
           </div>
           <div class="faq-item">
             <button class="faq-q" onclick="toggleFaq(this)">Why can't I tamper with an Algorand transaction? <span class="faq-arrow">▼</span></button>
@@ -1393,7 +1421,7 @@ async function registerModel() {
             <code>${d.modelId}</code>
             <button class="copy-btn" onclick="copyText('${d.modelId}', this)">Copy ID</button>
           </div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Algo TxID: <a href="https://lora.algonode.network/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Owner: ${user}</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Algo TxID: <a href="https://lora.algokit.io/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Owner: ${user}</div>
           
         </div>`;
       toast('ok', `Model "${name}" broadcast to Algorand Testnet!`);
@@ -1453,7 +1481,7 @@ async function verifyModel() {
             <label>Your Hash (computed)</label>
             <code class="${valid ? 'hash-match' : 'hash-nomatch'}">${d.providedHash}</code>
           </div>
-          <div style="font-size:.78rem;color:var(--text-muted);">Algo TxID: <a href="https://lora.algonode.network/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Verifier: ${user}</div>
+          <div style="font-size:.78rem;color:var(--text-muted);">Algo TxID: <a href="https://lora.algokit.io/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Verifier: ${user}</div>
           
         </div>
       </div>`;
@@ -1477,7 +1505,7 @@ async function loadVersions() {
         <td><span class="badge badge-ok">v${v.version}</span></td>
         <td><code style="font-family:var(--mono);font-size:.72rem;">${v.hash.substring(0,14)}…</code></td>
         <td>${v.changelog}</td>
-        <td><a href="https://lora.algonode.network/testnet/transaction/${v.algoTxId}" target="_blank">AlgoTx</a></td>
+        <td><a href="https://lora.algokit.io/testnet/transaction/${v.algoTxId}" target="_blank">AlgoTx</a></td>
       </tr>`;
     });
     document.getElementById('vhResult').innerHTML = h + '</table>';
@@ -1525,7 +1553,7 @@ async function loadAudit() {
         <td><strong>${v.verifier}</strong></td>
         <td>${v.isValid ? '<span class="badge badge-ok">Valid</span>' : '<span class="badge badge-err">Invalid</span>'}</td>
         <td><code style="font-family:var(--mono);font-size:.72rem;">${v.providedHash ? v.providedHash.substring(0,14)+'…' : '—'}</code></td>
-        <td>${v.algoTxId ? `<a href='https://lora.algonode.network/testnet/transaction/${v.algoTxId}' target='_blank'>AlgoTx</a>` : '—'}</td>
+        <td>${v.algoTxId ? `<a href='https://lora.algokit.io/testnet/transaction/${v.algoTxId}' target='_blank'>AlgoTx</a>` : '—'}</td>
         <td style="font-size:.78rem;color:var(--text-muted);">${t}</td>
       </tr>`;
     });
@@ -2762,6 +2790,129 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 2000);
   }
 });
+
+
+// ── Algorand Proof & Wallet Functions ─────────────────────────────────
+
+async function lookupProof() {
+  const txid = document.getElementById('proofTxId').value.trim();
+  const out   = document.getElementById('proofResult');
+  if (!txid) { toast('err', 'Paste a TxID first'); return; }
+
+  setLoading('proofBtn', true, 'Fetching from Algorand…');
+  out.innerHTML = '<div style="color:var(--text-muted);margin:.5rem 0;">⏳ Querying Algorand Indexer…</div>';
+
+  try {
+    const res = await fetch(`${API}/algo/tx/${txid}`);
+    const d   = await res.json();
+
+    if (!d.success) {
+      out.innerHTML = `<div class="result-box err" style="margin-top:.5rem;">❌ ${d.error}</div>`;
+      return;
+    }
+
+    const ts = d.block_time
+      ? new Date(d.block_time * 1000).toLocaleString()
+      : '—';
+
+    const noteHtml = d.note_parsed
+      ? `<pre style="background:rgba(0,0,0,.2);border-radius:8px;padding:.8rem;font-size:.78rem;overflow-x:auto;margin:.4rem 0;">${JSON.stringify(d.note_parsed, null, 2)}</pre>`
+      : `<code style="font-size:.78rem;">${d.note_decoded || '(empty)'}</code>`;
+
+    out.innerHTML = `
+      <div style="border:1px solid rgba(0,206,201,.3);border-radius:12px;padding:1.2rem;margin-top:.6rem;background:rgba(0,206,201,.05);">
+        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;">
+          <span style="font-size:1.4rem;">✅</span>
+          <div>
+            <div style="font-weight:700;font-size:1rem;">Transaction Confirmed on Algorand Testnet</div>
+            <div style="font-size:.78rem;color:var(--text-muted);">Block Round #${d.round} · ${ts}</div>
+          </div>
+          <a href="https://lora.algokit.io/testnet/transaction/${d.txid}" target="_blank"
+             class="btn" style="margin-left:auto;text-decoration:none;padding:.35rem .8rem;font-size:.8rem;">
+             View on Explorer ↗
+          </a>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem;font-size:.83rem;">
+          <div><span style="color:var(--text-muted);">TxID</span><br><code style="font-size:.72rem;word-break:break-all;">${d.txid}</code></div>
+          <div><span style="color:var(--text-muted);">Sender</span><br><code style="font-size:.72rem;">${(d.sender||'').substring(0,20)}…</code></div>
+          <div><span style="color:var(--text-muted);">Type</span><br><strong>${d.tx_type || '—'}</strong></div>
+          <div><span style="color:var(--text-muted);">Fee</span><br><strong>${d.fee_algo} ALGO</strong></div>
+        </div>
+        <div style="margin-top:.9rem;">
+          <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:.3rem;">Embedded Note Field (Model Metadata)</div>
+          ${noteHtml}
+        </div>
+      </div>`;
+  } catch(e) {
+    out.innerHTML = `<div class="result-box err" style="margin-top:.5rem;">❌ ${e.message}</div>`;
+  } finally {
+    setLoading('proofBtn', false, '🔎 Fetch Proof');
+  }
+}
+
+async function loadWalletInfo() {
+  const out = document.getElementById('walletInfo');
+  if (!out) return;
+  try {
+    const res = await fetch(`${API}/algo/wallet`);
+    const d   = await res.json();
+    if (!d.success) { out.innerHTML = `<span style="color:var(--danger);">Error: ${d.error}</span>`; return; }
+
+    out.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem;font-size:.88rem;margin-bottom:1rem;">
+        <div style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:.8rem;">
+          <div style="color:var(--text-muted);font-size:.72rem;font-weight:700;text-transform:uppercase;">Balance</div>
+          <div style="font-size:1.3rem;font-weight:700;color:var(--success);">${d.balance_algo.toFixed(4)} ALGO</div>
+          <div style="font-size:.72rem;color:var(--text-muted);">Min reserved: ${d.min_balance_algo.toFixed(4)}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:.8rem;">
+          <div style="color:var(--text-muted);font-size:.72rem;font-weight:700;text-transform:uppercase;">Status</div>
+          <div style="font-size:1rem;font-weight:700;">${d.status}</div>
+          <div style="font-size:.72rem;color:var(--text-muted);">Created round: ${d.created_at_round ?? '—'}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:.8rem;">
+          <div style="color:var(--text-muted);font-size:.72rem;font-weight:700;text-transform:uppercase;">Smart Contract</div>
+          <div style="font-size:1rem;font-weight:700;">${d.app_id ? `App #${d.app_id}` : 'Not deployed'}</div>
+          ${d.app_explorer_url ? `<a href="${d.app_explorer_url}" target="_blank" style="font-size:.72rem;color:var(--primary);">View on Explorer ↗</a>` : ''}
+        </div>
+      </div>
+      <div style="font-size:.78rem;color:var(--text-muted);">
+        Wallet Address: <code>${d.address}</code>
+        &nbsp;·&nbsp;
+        <a href="${d.explorer_url}" target="_blank" style="color:var(--primary);">View Account on Algorand ↗</a>
+      </div>`;
+  } catch(e) {
+    out.innerHTML = `<span style="color:var(--danger);">Could not load wallet info</span>`;
+  }
+}
+
+async function loadContractInfo() {
+  const out = document.getElementById('contractInfo');
+  if (!out) return;
+  try {
+    const res = await fetch(`${API}/algo/contract`);
+    const d   = await res.json();
+    if (!d.success) {
+      out.innerHTML = `<span style="color:var(--warn);">⏳ ${d.error}</span>`;
+      return;
+    }
+    out.innerHTML = `
+      <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;">
+        <span style="font-size:1.5rem;">📋</span>
+        <div>
+          <div style="font-weight:700;">App ID: ${d.app_id}</div>
+          <div style="font-size:.77rem;color:var(--text-muted);">Network: ${d.network}</div>
+        </div>
+        <a href="${d.explorer_url}" target="_blank" class="btn" style="text-decoration:none;padding:.35rem .8rem;font-size:.8rem;margin-left:auto;">
+          View Contract on Algorand ↗
+        </a>
+      </div>`;
+  } catch(e) {
+    out.innerHTML = `<span style="color:var(--danger);">Could not load contract info</span>`;
+  }
+}
+
+
 </script>
 
 </body>

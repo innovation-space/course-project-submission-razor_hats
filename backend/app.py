@@ -531,6 +531,43 @@ def get_stats():
     ), 200
 
 
+
+
+# ------------------------------------------------------------------ #
+#  Algorand Testnet live endpoints                                     #
+# ------------------------------------------------------------------ #
+
+@app.route("/api/algo/wallet", methods=["GET"])
+def algo_wallet_info():
+    """Return live Algorand wallet / account info for the server address."""
+    data = algorand_client.get_wallet_info()
+    return jsonify(data), (200 if data.get("success") else 503)
+
+
+@app.route("/api/algo/tx/<txid>", methods=["GET"])
+def algo_tx_info(txid):
+    """
+    Fetch a confirmed Algorand transaction by TxID from the public Indexer.
+    Used by the Blockchain Proof page to show live on-chain data.
+    """
+    data = algorand_client.get_transaction_info(txid)
+    return jsonify(data), (200 if data.get("success") else 404)
+
+
+@app.route("/api/algo/contract", methods=["GET"])
+def algo_contract_info():
+    """Return the deployed smart contract App ID and explorer link."""
+    from contract import load_app_id
+    app_id = load_app_id()
+    if not app_id:
+        return jsonify({"success": False, "error": "Contract not yet deployed. Register a model first."}), 404
+    return jsonify({
+        "success": True,
+        "app_id": app_id,
+        "network": "Algorand Testnet",
+        "explorer_url": f"https://lora.algonode.network/testnet/application/{app_id}",
+    }), 200
+
 @app.route("/api/stats/activity", methods=["GET"])
 def get_activity():
     """
