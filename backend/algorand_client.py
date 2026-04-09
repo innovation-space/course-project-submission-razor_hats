@@ -1,95 +1,241 @@
-from algosdk.v2client import algod
-from algosdk import account
-from algosdk.transaction import PaymentTxn
+"""
+BlockVerify — Algorand Testnet Interface
+=========================================
+Handles:
+  1. Server wallet creation / loading
+  2. Broadcasting model metadata as note-only transactions
+  3. Calling the deployed smart contract to store model_id → hash
+  4. Live transaction lookup (for Blockchain Proof page)
+  5. Wallet account info (for Dashboard)
+"""
+
 import json
 import os
+import time
 
-# Connect to AlgoNode free public testnet API (Requires no auth token)
-ALGOD_ADDRESS = "https://testnet-api.algonode.cloud"
-ALGOD_TOKEN = ""
+import requests
+from algosdk import account
+from algosdk.v2client import algod
+from algosdk.transaction import PaymentTxn
+
+# ── Public AlgoNode endpoints (no API key needed) ──────────────────────
+ALGOD_ADDRESS     = "https://testnet-api.algonode.cloud"
+INDEXER_ADDRESS   = "https://testnet-idx.algonode.cloud"
+ALGOD_TOKEN       = ""
 
 client = algod.AlgodClient(ALGOD_TOKEN, ALGOD_ADDRESS)
 
-# Manage the server wallet (which pays the 0.001 ALGO fee)
+# ── Wallet persistence ─────────────────────────────────────────────────
 WALLET_FILE = os.path.join(os.path.dirname(__file__), "data", "algo_wallet.json")
+
 
 def get_or_create_wallet():
     if os.path.exists(WALLET_FILE):
         with open(WALLET_FILE) as f:
             data = json.load(f)
             return data["address"], data["private_key"]
-    else:
-        private_key, address = account.generate_account()
-        os.makedirs(os.path.dirname(WALLET_FILE), exist_ok=True)
-        with open(WALLET_FILE, "w") as f:
-            json.dump({"address": address, "private_key": private_key}, f, indent=2)
-        print("\n" + "="*70)
-        print("🚨 NEW ALGORAND TESTNET WALLET GENERATED 🚨")
-        print(f"➜ Server Address: {address}")
-        print("To broadcast models, this wallet needs test ALGO to pay the small network fee.")
-        print("Please visit: https://bank.testnet.algorand.network/ OR https://dispenser.testnet.aws.algodev.network/")
-        print("Paste the address above and click Dispense before registering models!")
-        print("="*70 + "\n")
-        return address, private_key
+
+    private_key, address = account.generate_account()
+    os.makedirs(os.path.dirname(WALLET_FILE), exist_ok=True)
+    with open(WALLET_FILE, "w") as f:
+        json.dump({"address": address, "private_key": private_key}, f, indent=2)
+
+    print("\n" + "=" * 70)
+    print("🚨 NEW ALGORAND TESTNET WALLET GENERATED 🚨")
+    print(f"➜  Server Address : {address}")
+    print("Fund it (FREE) at: https://bank.testnet.algorand.network/")
+    print("=" * 70 + "\n")
+    return address, private_key
+
 
 ADDRESS, PRIVATE_KEY = get_or_create_wallet()
 
+
+# ── Smart contract auto-deploy / load ─────────────────────────────────
+
+def _get_or_deploy_contract():
+    """
+    Load the already-deployed App ID from disk, or deploy a fresh contract.
+    Called lazily on first registration so the server boots instantly.
+    """
+    from contract import load_app_id, deploy_contract
+    app_id = load_app_id()
+    if app_id:
+        return app_id
+
+    # Check balance before deploying (costs ~0.001 ALGO)
+    try:
+        info = client.account_info(ADDRESS)
+        if info.get("amount", 0) < 2000:
+            print("⚠️  Wallet not funded yet — skipping contract deploy. "
+                  f"Fund {ADDRESS} at https://bank.testnet.algorand.network/")
+            return None
+    except Exception:
+        return None
+
+    result = deploy_contract(client, PRIVATE_KEY, ADDRESS)
+    return result.get("app_id")
+
+
+# ── 1. Broadcast hash as note-transaction ─────────────────────────────
+
 def broadcast_hash_to_algorand(model_id, model_name, model_hash, owner):
     """
-    Sends a 0-ALGO transaction to oneself.
-    The payload is stored in the immutable `note` field of the transaction.
+    Sends a 0-ALGO self-transaction with JSON metadata in the note field.
+    Also calls the smart contract to permanently store model_id → hash.
+    Returns {"success": True, "txid": ..., "round": ..., "app_id": ..., "contract_txid": ...}
     """
     try:
-        # Check balance
         account_info = client.account_info(ADDRESS)
-        balance = account_info.get('amount', 0)
-        
+        balance = account_info.get("amount", 0)
+
         if balance < 1000:
-             return {"success": False, "error": f"Blockchain Wallet Empty! Please fund address {ADDRESS} at https://bank.testnet.algorand.network/"}
-             
+            return {
+                "success": False,
+                "error": (
+                    f"Wallet empty! Fund {ADDRESS} at "
+                    "https://bank.testnet.algorand.network/"
+                ),
+            }
+
         params = client.suggested_params()
-        
+
         payload = {
-            "id": model_id,
-            "name": model_name,
-            "hash": model_hash,
-            "owner": owner
+            "id":    model_id,
+            "name":  model_name,
+            "hash":  model_hash,
+            "owner": owner,
         }
-        
-        # Max note size in Algorand is 1024 bytes (1KB), our payload is ~150 bytes.
         note = json.dumps(payload).encode()
-        
-        # A 0-value transaction to ourselves just to securely log the note metadata into the ledger
+
         txn = PaymentTxn(
             sender=ADDRESS,
             sp=params,
             receiver=ADDRESS,
             amt=0,
-            note=note
+            note=note,
         )
-        
-        signed_txn = txn.sign(PRIVATE_KEY)
-        txid = client.send_transaction(signed_txn)
-        
-        # Wait for confirmation (Algorand block time is ~3 seconds!)
-        import time
-        max_retries = 10
+        signed = txn.sign(PRIVATE_KEY)
+        txid   = client.send_transaction(signed)
+
+        # Wait for confirmation (~3 s on Algorand)
         confirmed_round = None
-        for _ in range(max_retries):
+        for _ in range(15):
             txinfo = client.pending_transaction_info(txid)
-            if txinfo.get("confirmed-round") and txinfo.get("confirmed-round") > 0:
-                confirmed_round = txinfo.get("confirmed-round")
+            if txinfo.get("confirmed-round", 0) > 0:
+                confirmed_round = txinfo["confirmed-round"]
                 break
             time.sleep(1)
-            
+
         if not confirmed_round:
-            return {"success": False, "error": "Transaction sent but confirmation timed out."}
-            
+            return {"success": False, "error": "Tx sent but confirmation timed out."}
+
+        # ── Also call the smart contract ──────────────────────────────
+        app_id         = None
+        contract_txid  = None
+        try:
+            from contract import call_contract_register
+            app_id = _get_or_deploy_contract()
+            if app_id:
+                cr = call_contract_register(
+                    client, PRIVATE_KEY, ADDRESS,
+                    app_id, model_id, model_hash,
+                )
+                if cr.get("success"):
+                    contract_txid = cr.get("contract_txid")
+        except Exception as ce:
+            # Contract call failure must NOT block registration
+            print(f"[contract] Non-fatal: {ce}")
+
         return {
             "success": True,
-            "txid": txid,
-            "round": confirmed_round
+            "txid":          txid,
+            "round":         confirmed_round,
+            "app_id":        app_id,
+            "contract_txid": contract_txid,
         }
-        
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── 2. Live transaction lookup ─────────────────────────────────────────
+
+def get_transaction_info(txid: str) -> dict:
+    """
+    Fetch a confirmed transaction by TxID from the Algorand Indexer.
+    Returns a cleaned dict suitable for JSON serialisation.
+    """
+    try:
+        url  = f"{INDEXER_ADDRESS}/v2/transactions/{txid}"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            return {"success": False, "error": f"Indexer returned {resp.status_code}"}
+
+        data = resp.json().get("transaction", {})
+
+        # Decode note field (base64 → utf-8 JSON if possible)
+        note_raw    = data.get("note", "")
+        note_decoded = ""
+        note_parsed  = None
+        if note_raw:
+            import base64
+            try:
+                note_decoded = base64.b64decode(note_raw).decode("utf-8")
+                note_parsed  = json.loads(note_decoded)
+            except Exception:
+                note_decoded = note_raw   # leave as-is
+
+        return {
+            "success": True,
+            "txid":          data.get("id"),
+            "round":         data.get("confirmed-round"),
+            "block_time":    data.get("round-time"),
+            "sender":        data.get("sender"),
+            "receiver":      data.get("payment-transaction", {}).get("receiver"),
+            "amount_algo":   data.get("payment-transaction", {}).get("amount", 0) / 1e6,
+            "fee_algo":      data.get("fee", 0) / 1e6,
+            "note_raw":      note_raw,
+            "note_decoded":  note_decoded,
+            "note_parsed":   note_parsed,
+            "tx_type":       data.get("tx-type"),
+            "first_valid":   data.get("first-valid"),
+            "last_valid":    data.get("last-valid"),
+            "genesis_id":    data.get("genesis-id"),
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── 3. Wallet / account info ───────────────────────────────────────────
+
+def get_wallet_info() -> dict:
+    """
+    Return live account stats for the server wallet from Algorand Testnet.
+    """
+    try:
+        info = client.account_info(ADDRESS)
+
+        from contract import load_app_id
+        app_id       = load_app_id()
+        app_explorer = (
+            f"https://lora.algokit.io/testnet/application/{app_id}"
+            if app_id else None
+        )
+
+        return {
+            "success": True,
+            "address":            ADDRESS,
+            "balance_algo":       info.get("amount", 0) / 1e6,
+            "min_balance_algo":   info.get("min-balance", 0) / 1e6,
+            "total_txns":         info.get("total-apps-opted-in", 0),  # fallback
+            "status":             info.get("status", "Offline"),
+            "created_at_round":   info.get("created-at-round"),
+            "app_id":             app_id,
+            "app_explorer_url":   app_explorer,
+            "explorer_url":       f"https://lora.algokit.io/testnet/account/{ADDRESS}",
+        }
+
     except Exception as e:
         return {"success": False, "error": str(e)}

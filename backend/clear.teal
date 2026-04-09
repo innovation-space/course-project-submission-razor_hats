@@ -1,0 +1,9 @@
+#pragma version 8
+
+// ─── BlockVerify Clear State Program ───────────────────────────────────
+// Called when a user clears their local state from the contract.
+// This contract uses no local state, so we simply approve.
+// ──────────────────────────────────────────────────────────────────────
+
+int 1
+return

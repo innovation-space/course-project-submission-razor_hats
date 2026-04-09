@@ -1,0 +1,41 @@
+#pragma version 8
+
+// ─── BlockVerify Model Registry Contract ───────────────────────────────
+// Stores: model_id (bytes) → model_hash (bytes) in global state
+// Method: register(model_id, model_hash)
+// Author: razor_hats team
+// Network: Algorand Testnet
+// ──────────────────────────────────────────────────────────────────────
+
+// ── Detect app creation ────────────────────────────────────────────────
+txn ApplicationID
+int 0
+==
+bnz handle_creation
+
+// ── Reject anything other than NoOp ───────────────────────────────────
+txn OnCompletion
+int NoOp
+==
+assert
+
+// ── Route by first arg: must be "register" ────────────────────────────
+txna ApplicationArgs 0
+byte "register"
+==
+assert
+
+// ── Store model_id → hash in global state ─────────────────────────────
+// key   = arg[1]  (model_id, up to 64 bytes)
+// value = arg[2]  (SHA-256 fingerprint, 64 bytes hex)
+txna ApplicationArgs 1
+txna ApplicationArgs 2
+app_global_put
+
+b done
+
+handle_creation:
+
+done:
+int 1
+return
