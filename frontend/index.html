@@ -1735,9 +1735,11 @@ function renderModels(models, query) {
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVerify('${m.modelId}')" data-tip="Go to Verify tab with this model's ID pre-filled — re-upload your file to check its integrity.">Verify</button>
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')" data-tip="Add a new version — upload a new file and add a changelog note while keeping the full history.">Add Version</button>
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(108,92,231,0.2),rgba(0,206,201,0.15));border-color:rgba(108,92,231,0.4);" onclick="downloadReport('${m.modelId}','${m.modelName.replace(/'/g,'')}')" data-tip="Download a PDF integrity report — includes model metadata, hash, version history, and full audit trail.">📄 PDF Report</button>
+        <button class="btn btn-sec" id="ocBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(0,206,201,0.2),rgba(108,92,231,0.15));border-color:rgba(0,206,201,0.4);" onclick="verifyOnChain('${m.modelId}',this)" data-tip="Read the Algorand smart contract's global state and compare the on-chain hash with the local hash — proves the blockchain is used for verification.">🔗 Verify On-Chain</button>
         <button class="btn btn-sec" id="privBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;" onclick="togglePrivacy('${m.modelId}',${!m.isPrivate})" data-tip="${m.isPrivate ? 'Make this model public — anyone can see and verify it in the Registry.' : 'Make this model private — only you can verify it, hidden from public Registry.'}">${m.isPrivate ? '🔒 Make Public' : '🌐 Make Private'}</button>
         ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')" data-tip="Permanently deactivate this model — it will no longer accept verifications.">Deactivate</button>` : ''}
       </div>
+      <div id="ocResult_${m.modelId}" style="margin-top:.5rem;"></div>
     </div>`;
   });
   document.getElementById('modelsResult').innerHTML = h + '</div>';
@@ -3153,6 +3155,75 @@ function loadScript(src) {
 
 
 
+
+// ── Smart Contract On-Chain Verification ──────────────────────────────
+
+async function verifyOnChain(modelId, btn) {
+  const out = document.getElementById('ocResult_' + modelId);
+  if (!out) return;
+
+  // Disable button during fetch
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Reading contract...';
+  out.innerHTML = '<div style="padding:.5rem;color:var(--text-muted);font-size:.8rem;"><span class="spinner"></span> Querying Algorand smart contract App #758544892...</div>';
+
+  try {
+    const res = await apiFetch(`${API}/algo/verify-onchain/${modelId}`);
+    const d   = await res.json();
+
+    if (!d.success) {
+      out.innerHTML = `<div class="result-box err" style="margin-top:.5rem;font-size:.82rem;">❌ ${d.error}</div>`;
+      return;
+    }
+
+    if (d.verified) {
+      out.innerHTML = `
+        <div style="margin-top:.5rem;padding:.8rem 1rem;border-radius:10px;background:rgba(0,184,148,0.1);border:1px solid rgba(0,184,148,0.3);">
+          <div style="font-size:.9rem;font-weight:700;color:var(--success);margin-bottom:.4rem;">✅ ON-CHAIN VERIFIED</div>
+          <div style="font-size:.78rem;color:var(--text-muted);">The hash stored in Algorand Smart Contract <strong>App #${d.app_id}</strong> matches the local registry.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.5rem;">
+            <div style="background:rgba(255,255,255,.03);padding:.5rem;border-radius:6px;">
+              <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;">Local Hash</div>
+              <div style="font-size:.7rem;font-family:monospace;color:var(--success);word-break:break-all;">${d.local_hash}</div>
+            </div>
+            <div style="background:rgba(255,255,255,.03);padding:.5rem;border-radius:6px;">
+              <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;">On-Chain Hash (Smart Contract)</div>
+              <div style="font-size:.7rem;font-family:monospace;color:var(--success);word-break:break-all;">${d.on_chain_hash}</div>
+            </div>
+          </div>
+          <div style="font-size:.7rem;margin-top:.5rem;"><a href="${d.explorer_url}" target="_blank" style="color:var(--primary);">View Smart Contract on Algorand Explorer ↗</a></div>
+        </div>`;
+    } else if (d.reason === 'not_found') {
+      out.innerHTML = `
+        <div class="result-box" style="margin-top:.5rem;font-size:.82rem;background:rgba(253,203,110,0.1);border-color:rgba(253,203,110,0.3);">
+          ⚠️ <strong>Not found on-chain</strong> — ${d.message}
+        </div>`;
+    } else {
+      out.innerHTML = `
+        <div style="margin-top:.5rem;padding:.8rem 1rem;border-radius:10px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);">
+          <div style="font-size:.9rem;font-weight:700;color:var(--danger);margin-bottom:.4rem;">❌ MISMATCH DETECTED</div>
+          <div style="font-size:.78rem;color:var(--text-muted);">The on-chain hash does NOT match! Possible tampering of local database.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.5rem;">
+            <div style="background:rgba(255,255,255,.03);padding:.5rem;border-radius:6px;">
+              <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;">Local Hash</div>
+              <div style="font-size:.7rem;font-family:monospace;color:var(--danger);word-break:break-all;">${d.local_hash}</div>
+            </div>
+            <div style="background:rgba(255,255,255,.03);padding:.5rem;border-radius:6px;">
+              <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;font-weight:700;">On-Chain Hash (Smart Contract)</div>
+              <div style="font-size:.7rem;font-family:monospace;color:var(--danger);word-break:break-all;">${d.on_chain_hash}</div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+  } catch(e) {
+    out.innerHTML = `<div class="result-box err" style="margin-top:.5rem;font-size:.82rem;">❌ ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+}
 
 // ── Transaction Ledger ────────────────────────────────────────────────
 
