@@ -26,7 +26,7 @@ import hashlib
 # ------------------------------------------------------------------ #
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True)
 app.register_blueprint(auth_bp)
 
 # Persistence file paths

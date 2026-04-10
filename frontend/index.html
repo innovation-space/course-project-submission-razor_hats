@@ -1489,6 +1489,73 @@ function switchTab(name, btn) {
   }
 }
 
+// ── Hash Fingerprint Identicon Generator ──────────────────────────────
+
+function hashIdenticon(hash, size) {
+  size = size || 42;
+  if (!hash || hash.length < 16) return '';
+
+  // Parse hash bytes
+  const bytes = [];
+  for (let i = 0; i < Math.min(hash.length, 32); i += 2) {
+    bytes.push(parseInt(hash.substr(i, 2), 16));
+  }
+
+  // Derive colors from hash
+  const hue1 = (bytes[0] * 360) / 256;
+  const hue2 = (hue1 + 90 + (bytes[1] % 120)) % 360;
+  const sat1 = 55 + (bytes[2] % 30);
+  const sat2 = 50 + (bytes[3] % 35);
+  const lgt1 = 50 + (bytes[4] % 15);
+  const lgt2 = 45 + (bytes[5] % 20);
+
+  const col1 = `hsl(${hue1},${sat1}%,${lgt1}%)`;
+  const col2 = `hsl(${hue2},${sat2}%,${lgt2}%)`;
+  const bgCol = `hsl(${hue1},${sat1 - 30}%,${lgt1 - 30}%)`;
+
+  // Build 5×5 symmetric grid (only left half + center column matters)
+  const grid = 5;
+  const half = Math.ceil(grid / 2); // 3 columns
+  const cells = [];
+
+  for (let row = 0; row < grid; row++) {
+    cells[row] = [];
+    for (let col = 0; col < half; col++) {
+      const idx = row * half + col;
+      const byteIdx = 6 + (idx % (bytes.length - 6));
+      cells[row][col] = bytes[byteIdx] % 2 === 0;
+    }
+    // Mirror horizontally for symmetry
+    for (let col = half; col < grid; col++) {
+      cells[row][col] = cells[row][grid - 1 - col];
+    }
+  }
+
+  // Build SVG
+  const cellSize = size / grid;
+  const r = Math.max(2, cellSize * 0.15);
+  let rects = '';
+
+  for (let row = 0; row < grid; row++) {
+    for (let col = 0; col < grid; col++) {
+      if (cells[row][col]) {
+        const useCol = ((row + col) % 2 === 0) ? col1 : col2;
+        rects += `<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" rx="${r}" fill="${useCol}" opacity="0.9"/>`;
+      }
+    }
+  }
+
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="border-radius:${size * 0.16}px;background:${bgCol};vertical-align:middle;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg">${rects}</svg>`;
+}
+
+// Helper: wrap identicon + hash text together
+function hashWithIcon(hash, iconSize) {
+  if (!hash) return '';
+  iconSize = iconSize || 28;
+  const short = hash.slice(0, 16) + '…';
+  return `<span style="display:inline-flex;align-items:center;gap:.4rem;" title="${hash}">${hashIdenticon(hash, iconSize)}<code style="font-size:.72rem;color:var(--text-muted);">${short}</code></span>`;
+}
+
 // ── SHA-256 ──
 function sha256Fallback(buffer) {
   const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
@@ -1518,7 +1585,7 @@ async function onFile(s) {
     const hex = await computeHash(file);
     hashes[s] = hex;
     document.getElementById(s+'HashWrap').style.display = 'block';
-    document.getElementById(s+'Hash').textContent = hex;
+    document.getElementById(s+'Hash').innerHTML = `<span style="display:inline-flex;align-items:center;gap:.5rem;">${hashIdenticon(hex, 24)}<span>${hex}</span></span>`;
   } catch(e) { toast('err', 'Hash error: ' + e.message); }
 }
 
@@ -1586,6 +1653,13 @@ async function registerModel() {
       document.getElementById('regModelResult').innerHTML = `
         <div class="model-id-box">
           <label>✅ Model registered — ID copied to clipboard automatically</label>
+          <div style="display:flex;align-items:center;gap:.8rem;margin:.6rem 0;">
+            ${hashIdenticon(hash, 48)}
+            <div>
+              <div style="font-size:.6rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Hash Fingerprint</div>
+              <code style="font-size:.7rem;word-break:break-all;color:var(--text-muted);">${hash}</code>
+            </div>
+          </div>
           <div class="id-row">
             <code>${d.modelId}</code>
             <button class="copy-btn" onclick="copyText('${d.modelId}', this)">Copy ID</button>
@@ -1814,6 +1888,13 @@ function renderModels(models, query) {
       : '<span class="badge" style="background:rgba(0,206,201,0.12);color:var(--success);border:1px solid rgba(0,206,201,0.25);">🌐 Public</span>';
     h += `<div class="model-item">
       <div class="model-item-name">${m.modelName} ${statusBadge} <span class="badge badge-warn">v${m.currentVersion}</span> ${privBadge}</div>
+      <div style="display:flex;align-items:center;gap:.6rem;margin:.4rem 0;">
+        ${hashIdenticon(m.modelHash, 36)}
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.62rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Hash Fingerprint</div>
+          <code style="font-size:.7rem;color:var(--text-muted);word-break:break-all;">${m.modelHash}</code>
+        </div>
+      </div>
       <div class="model-item-id">
         <code>${m.modelId}</code>
         <button class="copy-btn" onclick="copyText('${m.modelId}', this)" style="flex-shrink:0;">Copy ID</button>
@@ -2549,6 +2630,7 @@ function renderRegistry(models, total, page, pages) {
       : '<span class="badge badge-err">Inactive</span>';
     h += `
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.2rem;display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-start;transition:border-color .2s;" onmouseover="this.style.borderColor='rgba(108,92,231,0.4)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="flex-shrink:0;margin-top:.1rem;">${hashIdenticon(m.modelHash, 38)}</div>
         <div style="flex:1;min-width:180px;">
           <div style="font-weight:700;font-size:.95rem;margin-bottom:.3rem;">${m.modelName} ${status} <span class="badge badge-warn">v${m.currentVersion}</span></div>
           <div style="font-size:.78rem;color:var(--text-muted);display:flex;gap:.8rem;flex-wrap:wrap;">
