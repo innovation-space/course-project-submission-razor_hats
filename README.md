@@ -385,7 +385,7 @@ Indexer:  https://testnet-idx.algonode.cloud/v2/transactions/<TXID>
 ```
 
 ---
-##Screen Shots Of Website
+## Screen Shots Of Website
 
 <img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/1ecc2a3c-d53d-4843-aa50-acd185237942" />
 
