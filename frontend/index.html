@@ -1827,10 +1827,12 @@ function renderModels(models, query) {
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;" onclick="prefillVersion('${m.modelId}')" data-tip="Add a new version — upload a new file and add a changelog note while keeping the full history.">Add Version</button>
         <button class="btn btn-sec" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(108,92,231,0.2),rgba(0,206,201,0.15));border-color:rgba(108,92,231,0.4);" onclick="downloadReport('${m.modelId}','${m.modelName.replace(/'/g,'')}')" data-tip="Download a PDF integrity report — includes model metadata, hash, version history, and full audit trail.">📄 PDF Report</button>
         <button class="btn btn-sec" id="ocBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(0,206,201,0.2),rgba(108,92,231,0.15));border-color:rgba(0,206,201,0.4);" onclick="verifyOnChain('${m.modelId}',this)" data-tip="Read the Algorand smart contract's global state and compare the on-chain hash with the local hash — proves the blockchain is used for verification.">🔗 Verify On-Chain</button>
+        <button class="btn btn-sec" id="tamperBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;background:linear-gradient(135deg,rgba(255,107,107,0.2),rgba(253,203,110,0.15));border-color:rgba(255,107,107,0.4);color:#ff6b6b;" onclick="tamperSimulate('${m.modelId}',this)" data-tip="DEMO: Deliberately corrupt this model's local hash, then run On-Chain Verify to prove the blockchain detects tampering.">⚠️ Tamper Demo</button>
         <button class="btn btn-sec" id="privBtn_${m.modelId}" style="font-size:.8rem;padding:.45rem .9rem;" onclick="togglePrivacy('${m.modelId}',${!m.isPrivate})" data-tip="${m.isPrivate ? 'Make this model public — anyone can see and verify it in the Registry.' : 'Make this model private — only you can verify it, hidden from public Registry.'}">${m.isPrivate ? '🔒 Make Public' : '🌐 Make Private'}</button>
         ${m.isActive ? `<button class="btn btn-danger" style="font-size:.8rem;padding:.45rem .9rem;" onclick="deactivateModel('${m.modelId}')" data-tip="Permanently deactivate this model — it will no longer accept verifications.">Deactivate</button>` : ''}
       </div>
       <div id="ocResult_${m.modelId}" style="margin-top:.5rem;"></div>
+      <div id="tamperResult_${m.modelId}" style="margin-top:.5rem;"></div>
     </div>`;
   });
   document.getElementById('modelsResult').innerHTML = h + '</div>';
@@ -3246,6 +3248,106 @@ function loadScript(src) {
 
 
 
+
+// ── Tamper Simulation Demo ────────────────────────────────────────────
+
+async function tamperSimulate(modelId, btn) {
+  const out = document.getElementById('tamperResult_' + modelId);
+  const ocOut = document.getElementById('ocResult_' + modelId);
+  if (!out) return;
+
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Corrupting...';
+
+  try {
+    const res = await apiFetch(`${API}/tamper-simulate/${modelId}`, { method: 'POST' });
+    const d   = await res.json();
+
+    if (!d.success) {
+      if (d.tampered) {
+        // Already tampered — offer restore
+        out.innerHTML = `
+          <div style="padding:.8rem 1rem;border-radius:10px;background:rgba(253,203,110,0.1);border:1px solid rgba(253,203,110,0.3);font-size:.82rem;">
+            ⚠️ Already tampered. <button class="btn btn-sec" style="font-size:.75rem;padding:.3rem .6rem;margin-left:.5rem;" onclick="tamperRestore('${modelId}')">🔄 Restore Original</button>
+          </div>`;
+      } else {
+        out.innerHTML = `<div class="result-box err" style="font-size:.82rem;">❌ ${d.error}</div>`;
+      }
+      return;
+    }
+
+    // Show dramatic tamper result
+    out.innerHTML = `
+      <div style="padding:.8rem 1rem;border-radius:10px;background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.35);animation:slideUpFade .4s ease;">
+        <div style="font-size:.9rem;font-weight:700;color:#ff6b6b;margin-bottom:.5rem;">💀 LOCAL DATABASE TAMPERED</div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:.6rem;">The local hash has been deliberately corrupted. The on-chain hash in the Algorand smart contract remains unchanged — proving blockchain immutability.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;">
+          <div style="background:rgba(0,184,148,0.08);padding:.5rem;border-radius:6px;border:1px solid rgba(0,184,148,0.2);">
+            <div style="font-size:.6rem;color:var(--success);font-weight:700;text-transform:uppercase;">Original Hash (On-Chain)</div>
+            <div style="font-size:.68rem;font-family:monospace;color:var(--success);word-break:break-all;margin-top:.2rem;">${d.original_hash}</div>
+          </div>
+          <div style="background:rgba(255,107,107,0.08);padding:.5rem;border-radius:6px;border:1px solid rgba(255,107,107,0.2);">
+            <div style="font-size:.6rem;color:#ff6b6b;font-weight:700;text-transform:uppercase;">Corrupted Hash (Local DB)</div>
+            <div style="font-size:.68rem;font-family:monospace;color:#ff6b6b;word-break:break-all;margin-top:.2rem;">${d.corrupted_hash}</div>
+          </div>
+        </div>
+        <div style="margin-top:.6rem;font-size:.78rem;color:var(--text-muted);">⏳ Auto-verifying against blockchain in 2 seconds...</div>
+      </div>`;
+
+    // Auto-trigger on-chain verification after 2 seconds for dramatic effect
+    setTimeout(() => {
+      const ocBtn = document.getElementById('ocBtn_' + modelId);
+      if (ocBtn) verifyOnChain(modelId, ocBtn);
+
+      // Add restore button after verification
+      setTimeout(() => {
+        const restoreHtml = `
+          <div style="margin-top:.6rem;padding:.6rem;background:rgba(253,203,110,0.08);border:1px solid rgba(253,203,110,0.25);border-radius:8px;display:flex;align-items:center;gap:.8rem;">
+            <span style="font-size:.82rem;">🔄</span>
+            <div style="flex:1;">
+              <div style="font-size:.78rem;font-weight:600;color:var(--warn);">Demo Complete — Tampering Detected!</div>
+              <div style="font-size:.72rem;color:var(--text-muted);">The blockchain proved the local database was corrupted. Click restore to undo.</div>
+            </div>
+            <button class="btn" style="font-size:.75rem;padding:.35rem .7rem;flex-shrink:0;" onclick="tamperRestore('${modelId}')">✅ Restore Original</button>
+          </div>`;
+        out.innerHTML += restoreHtml;
+      }, 3000);
+    }, 2000);
+
+  } catch(e) {
+    out.innerHTML = `<div class="result-box err" style="font-size:.82rem;">❌ ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+}
+
+async function tamperRestore(modelId) {
+  const out = document.getElementById('tamperResult_' + modelId);
+  const ocOut = document.getElementById('ocResult_' + modelId);
+
+  try {
+    const res = await apiFetch(`${API}/tamper-restore/${modelId}`, { method: 'POST' });
+    const d   = await res.json();
+
+    if (d.success) {
+      out.innerHTML = `
+        <div style="padding:.6rem 1rem;border-radius:10px;background:rgba(0,184,148,0.1);border:1px solid rgba(0,184,148,0.3);font-size:.82rem;animation:slideUpFade .4s ease;">
+          ✅ <strong>Original hash restored.</strong> The model is back to its verified state.
+        </div>`;
+      if (ocOut) ocOut.innerHTML = '';
+      toast('ok', 'Original hash restored — model integrity verified.');
+
+      // Auto-clear after 4 seconds
+      setTimeout(() => { out.innerHTML = ''; }, 4000);
+    } else {
+      out.innerHTML = `<div class="result-box err" style="font-size:.82rem;">❌ ${d.error}</div>`;
+    }
+  } catch(e) {
+    out.innerHTML = `<div class="result-box err" style="font-size:.82rem;">❌ ${e.message}</div>`;
+  }
+}
 
 // ── Algorand Model Registry Merkle Tree ───────────────────────────────
 

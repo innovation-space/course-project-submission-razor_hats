@@ -633,6 +633,66 @@ def algo_verify_onchain(model_id):
     }), 200
 
 
+@app.route("/api/tamper-simulate/<model_id>", methods=["POST"])
+@require_auth
+def tamper_simulate(model_id):
+    """
+    Deliberately corrupt the local hash to simulate tampering.
+    Stores the original hash so it can be restored.
+    """
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+
+    original_hash = model.get("modelHash", "")
+    if model.get("_originalHash"):
+        return jsonify({
+            "success": False,
+            "error": "Model is already tampered. Restore first before re-tampering.",
+            "tampered": True,
+        }), 400
+
+    # Corrupt the hash — flip characters to make it obviously different
+    import hashlib
+    corrupted = hashlib.sha256(("TAMPERED_" + original_hash).encode()).hexdigest()
+
+    model["_originalHash"] = original_hash
+    model["modelHash"] = corrupted
+    save_state()
+
+    return jsonify({
+        "success": True,
+        "model_id": model_id,
+        "original_hash": original_hash,
+        "corrupted_hash": corrupted,
+        "message": "Local hash has been corrupted! Run On-Chain Verify to detect the mismatch.",
+    }), 200
+
+
+@app.route("/api/tamper-restore/<model_id>", methods=["POST"])
+@require_auth
+def tamper_restore(model_id):
+    """Restore the original hash after a tamper simulation."""
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+
+    original = model.get("_originalHash")
+    if not original:
+        return jsonify({"success": False, "error": "Model was not tampered — nothing to restore."}), 400
+
+    model["modelHash"] = original
+    del model["_originalHash"]
+    save_state()
+
+    return jsonify({
+        "success": True,
+        "model_id": model_id,
+        "restored_hash": original,
+        "message": "Original hash restored successfully.",
+    }), 200
+
+
 @app.route("/api/algo/merkle", methods=["GET"])
 def algo_merkle_tree():
     """
