@@ -126,7 +126,7 @@
     .auth-err.show { display: block; }
     .auth-divider { text-align: center; font-size: .75rem; color: var(--text-muted); }
 
-    .app { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+    .app { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 
     /* ── Cards ── */
     .card, .stat-card {
@@ -146,24 +146,53 @@
     }
     .stat-lbl { font-size: .85rem; color: var(--text-muted); margin-top: .25rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
 
-    /* ── Tabs ── */
-    .tabs { display: flex; gap: .5rem; border-bottom: 1px solid var(--border); margin-bottom: 2rem; overflow-x: auto; padding-bottom: 0.5rem; }
+    /* ── Sidebar Layout ── */
+    .sidebar-layout { display: flex; gap: 0; margin-top: 1.5rem; }
+    .sidebar {
+      width: 220px; min-width: 220px; flex-shrink: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: .6rem;
+      position: sticky; top: 1rem; align-self: flex-start;
+      max-height: calc(100vh - 2rem); overflow-y: auto;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .sidebar-label {
+      font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em;
+      color: var(--text-muted); padding: .6rem .75rem .25rem; opacity: .6;
+    }
+    .sidebar-label:first-child { padding-top: .3rem; }
     .tab {
-      background: transparent; border: none; color: var(--text-muted); padding: .65rem 1.2rem;
-      cursor: pointer; font-family: var(--font); font-size: .95rem; font-weight: 600;
-      position: relative; transition: color 0.3s; white-space: nowrap;
+      display: flex; align-items: center; gap: .55rem; width: 100%;
+      background: transparent; border: none; color: var(--text-muted);
+      padding: .55rem .75rem; cursor: pointer; font-family: var(--font);
+      font-size: .82rem; font-weight: 600; border-radius: 10px;
+      position: relative; transition: all 0.25s ease; white-space: nowrap;
+      text-align: left;
     }
-    .tab::after {
-      content: ''; position: absolute; bottom: -0.6rem; left: 0; width: 100%; height: 3px;
-      background: var(--primary); border-radius: 3px 3px 0 0;
-      transform: scaleX(0); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    .tab::before {
+      content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 0; border-radius: 0 3px 3px 0;
+      background: var(--primary); transition: height 0.25s cubic-bezier(0.4,0,0.2,1);
     }
-    .tab:hover { color: var(--text); }
-    .tab.active { color: var(--primary-h); }
-    .tab.active::after { transform: scaleX(1); }
+    .tab:hover { color: var(--text); background: rgba(108,92,231,.06); }
+    .tab.active {
+      color: var(--primary-h);
+      background: rgba(108,92,231,.1);
+    }
+    .tab.active::before { height: 20px; }
+    .tab .tab-icon { font-size: 1rem; width: 1.2rem; text-align: center; flex-shrink: 0; }
+    .tab .tab-label { flex: 1; }
+    .sidebar-content { flex: 1; min-width: 0; padding-left: 1.5rem; }
     .tab-content { display: none; }
     .tab-content.active { display: block; animation: slideUpFade .4s cubic-bezier(0.16,1,0.3,1); }
     @keyframes slideUpFade { from { opacity:0; transform:translateY(15px); } to { opacity:1; transform:translateY(0); } }
+
+    /* Hide old .tabs class (horizontal) — we use .sidebar now */
+    .tabs { display: none; }
 
     /* ── Typography & Forms ── */
     .card h2 { font-size: 1.3rem; margin-bottom: .4rem; display: flex; align-items: center; gap: .5rem; font-weight: 700; }
@@ -533,6 +562,23 @@
     .username-hint { font-size: .7rem; color: var(--warn); margin-top: .3rem; display: none; }
 
     /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .sidebar-layout { flex-direction: column; }
+      .sidebar {
+        width: 100%; min-width: 0; position: static;
+        max-height: none; flex-direction: row; display: flex;
+        flex-wrap: wrap; gap: .25rem; border-radius: 12px;
+        padding: .4rem;
+      }
+      .sidebar-label { display: none; }
+      .tab { padding: .45rem .7rem; font-size: .75rem; border-radius: 8px; }
+      .tab::before { display: none; }
+      .tab.active::after {
+        content: ''; position: absolute; bottom: -2px; left: 20%; width: 60%; height: 2px;
+        background: var(--primary); border-radius: 2px;
+      }
+      .sidebar-content { padding-left: 0; padding-top: .8rem; }
+    }
     @media (max-width: 768px) {
       .header { flex-direction: column; padding: 1rem; }
       .stats { grid-template-columns: 1fr; }
@@ -677,19 +723,24 @@
     </div>
   </div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab active"  onclick="switchTab('register',this)" data-tip="Register an AI model by uploading a file — we compute its SHA-256 fingerprint and write it permanently to the blockchain.">📝 Register</button>
-    <button class="tab"         onclick="switchTab('verify',this)" data-tip="Re-upload your model or paste its hash to verify it hasn't been tampered with. A mismatch means the file was changed.">✅ Verify</button>
-    <button class="tab"         onclick="switchTab('versions',this)" data-tip="View the full version history of a model — every hash and changelog entry ever added.">📋 Versions</button>
-    <button class="tab"         onclick="switchTab('audit',this)" data-tip="See every verification attempt for a model — who verified it, when, and whether it passed.">🔍 Audit Trail</button>
-    <button class="tab"         onclick="switchTab('models',this)" data-tip="View and manage all AI models registered under your account.">📦 My Models</button>
-    <button class="tab"         onclick="switchTab('registry',this)" data-tip="Browse the public ledger — all models registered by all users on this blockchain.">🌐 Registry</button>
-    <button class="tab"         onclick="switchTab('explorer',this)" data-tip="Explore the public Algorand Testnet ledger — all registrations and verifications are broadcast as immutable transactions.">🔗 Explorer</button>
-    <button class="tab"         onclick="switchTab('proof',this)" data-tip="Look up any Algorand TxID and see the live on-chain transaction data — raw proof your data is on the blockchain.">🔍 Chain Proof</button>
-    <button class="tab"         onclick="switchTab('ledger',this)" data-tip="Live transaction history from the server wallet — every Algorand transaction BlockVerify has ever made.">📒 Ledger</button>
-        <button class="tab"         onclick="switchTab('help',this)" data-tip="FAQs, quick-start guide, and documentation for all BlockVerify features.">❓ Help</button>
-  </div>
+  <!-- Sidebar Layout -->
+  <div class="sidebar-layout">
+    <nav class="sidebar">
+      <div class="sidebar-label">Core</div>
+      <button class="tab active" onclick="switchTab('register',this)"><span class="tab-icon">📝</span><span class="tab-label">Register</span></button>
+      <button class="tab" onclick="switchTab('verify',this)"><span class="tab-icon">✅</span><span class="tab-label">Verify</span></button>
+      <button class="tab" onclick="switchTab('versions',this)"><span class="tab-icon">📋</span><span class="tab-label">Versions</span></button>
+      <button class="tab" onclick="switchTab('audit',this)"><span class="tab-icon">🔍</span><span class="tab-label">Audit Trail</span></button>
+      <button class="tab" onclick="switchTab('models',this)"><span class="tab-icon">📦</span><span class="tab-label">My Models</span></button>
+      <div class="sidebar-label">Blockchain</div>
+      <button class="tab" onclick="switchTab('registry',this)"><span class="tab-icon">🌐</span><span class="tab-label">Registry</span></button>
+      <button class="tab" onclick="switchTab('explorer',this)"><span class="tab-icon">🔗</span><span class="tab-label">Explorer</span></button>
+      <button class="tab" onclick="switchTab('proof',this)"><span class="tab-icon">⛓</span><span class="tab-label">Chain Proof</span></button>
+      <button class="tab" onclick="switchTab('ledger',this)"><span class="tab-icon">📒</span><span class="tab-label">Ledger</span></button>
+      <div class="sidebar-label">System</div>
+      <button class="tab" onclick="switchTab('help',this)"><span class="tab-icon">❓</span><span class="tab-label">Help & FAQ</span></button>
+    </nav>
+    <div class="sidebar-content">
 
   <!-- Register -->
   <div class="tab-content active" id="tab-register">
@@ -983,22 +1034,22 @@
       <div style="margin-bottom:1.4rem;">
         <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.8rem;">🚀 Quick Start</div>
         <div class="qs-grid">
-          <div class="qs-card" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">
+          <div class="qs-card" onclick="switchTab('register')">
             <div class="qs-icon">📝</div>
             <h4>1. Register a Model</h4>
             <p>Upload any file → get its SHA-256 hash → save it on the blockchain forever.</p>
           </div>
-          <div class="qs-card" onclick="switchTab('verify',document.querySelectorAll('.tab')[1])">
+          <div class="qs-card" onclick="switchTab('verify')">
             <div class="qs-icon">✅</div>
             <h4>2. Verify Integrity</h4>
             <p>Re-upload the same file later → compare hashes → instantly know if it was tampered.</p>
           </div>
-          <div class="qs-card" onclick="switchTab('models',document.querySelectorAll('.tab')[4])">
+          <div class="qs-card" onclick="switchTab('models')">
             <div class="qs-icon">📦</div>
             <h4>3. Manage Models</h4>
             <p>View all your registered models, add new versions, or deactivate old ones.</p>
           </div>
-          <div class="qs-card" onclick="switchTab('explorer',document.querySelectorAll('.tab')[5])">
+          <div class="qs-card" onclick="switchTab('explorer')">
             <div class="qs-icon">⛓</div>
             <h4>4. Algorand Explorer</h4>
             <p>Every registration is a live Algorand Testnet transaction. Click to explore your proofs on the global ledger.</p>
@@ -1092,7 +1143,10 @@
     </div>
   </div>
 
-</div>
+    </div><!-- end sidebar-content -->
+  </div><!-- end sidebar-layout -->
+
+</div><!-- end .app -->
 
 <!-- Welcome / Onboarding Modal -->
 <div class="welcome-overlay" id="welcomeModal">
@@ -1410,10 +1464,15 @@ function setLoading(btnId, loading, label) {
 }
 
 function switchTab(name, btn) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  // If btn is missing or doesn't exist, find the correct sidebar button
+  if (!btn || !btn.classList) {
+    btn = document.querySelector(`.sidebar .tab[onclick*="'${name}'"]`);
+  }
+  document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  const target = document.getElementById('tab-' + name);
+  if (target) target.classList.add('active');
   if (name === 'explorer') loadChain();
   if (name === 'models')   loadMyModels();
   if (name === 'registry') loadRegistry();
@@ -1740,7 +1799,7 @@ function renderModels(models, query) {
     document.getElementById('modelsResult').innerHTML = `
       <div class="empty-state">
         <span class="empty-icon">📦</span><p>${msg}</p>
-        ${!query ? `<button class="btn" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">Register your first model</button>` : ''}
+        ${!query ? `<button class="btn" onclick="switchTab('register')">Register your first model</button>` : ''}
       </div>`;
     return;
   }
@@ -1779,11 +1838,11 @@ function renderModels(models, query) {
 
 function prefillVerify(modelId) {
   document.getElementById('verModelId').value = modelId;
-  switchTab('verify', document.querySelectorAll('.tab')[1]);
+  switchTab('verify');
 }
 function prefillVersion(modelId) {
   document.getElementById('avModelId').value = modelId;
-  switchTab('versions', document.querySelectorAll('.tab')[2]);
+  switchTab('versions');
 }
 
 async function deactivateModel(modelId) {
@@ -2473,7 +2532,7 @@ function renderRegistry(models, total, page, pages) {
       <div class="empty-state">
         <span class="empty-icon">🌐</span>
         <p>No models registered yet. Be the first!</p>
-        <button class="btn" onclick="switchTab('register',document.querySelectorAll('.tab')[0])">Register a Model</button>
+        <button class="btn" onclick="switchTab('register')">Register a Model</button>
       </div>`;
     return;
   }
