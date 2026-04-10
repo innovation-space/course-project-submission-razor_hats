@@ -365,7 +365,7 @@ backend/tests/test_blockchain.py .                                   [100%]
 | Member | Role |
 |---|---|
 | Shubhangam Singh | Backend, Algorand Integration, Smart Contract, Testing |
-| Manoov | Frontend UI/UX, API Integration, Documentation |
+| Aditya Kumar, Mihir Dixit | Frontend UI/UX, API Integration, Documentation |
 
 ---
 
