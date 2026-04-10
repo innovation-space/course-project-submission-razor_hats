@@ -687,6 +687,7 @@
     <button class="tab"         onclick="switchTab('registry',this)" data-tip="Browse the public ledger — all models registered by all users on this blockchain.">🌐 Registry</button>
     <button class="tab"         onclick="switchTab('explorer',this)" data-tip="Explore the public Algorand Testnet ledger — all registrations and verifications are broadcast as immutable transactions.">🔗 Explorer</button>
     <button class="tab"         onclick="switchTab('proof',this)" data-tip="Look up any Algorand TxID and see the live on-chain transaction data — raw proof your data is on the blockchain.">🔍 Chain Proof</button>
+    <button class="tab"         onclick="switchTab('ledger',this)" data-tip="Live transaction history from the server wallet — every Algorand transaction BlockVerify has ever made.">📒 Ledger</button>
         <button class="tab"         onclick="switchTab('help',this)" data-tip="FAQs, quick-start guide, and documentation for all BlockVerify features.">❓ Help</button>
   </div>
 
@@ -913,6 +914,30 @@
       </div>
       <div style="margin-top:.8rem;font-size:.72rem;color:var(--text-muted);text-align:center;">
         Live data from <a href="https://algonode.io" target="_blank" style="color:var(--primary);">AlgoNode</a> public API · Auto-refreshes every 5 seconds
+      </div>
+    </div>
+  </div>
+
+  <!-- Transaction Ledger -->
+  <div class="tab-content" id="tab-ledger">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">
+        <div>
+          <h2 style="margin:0;">📒 Algorand Transaction Ledger</h2>
+          <p class="subtitle" style="margin-top:.3rem;">Every blockchain transaction made by the BlockVerify server wallet — fetched live from the Algorand Indexer.</p>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;">
+          <select id="ledgerLimit" onchange="loadLedger()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.3rem .5rem;font-size:.78rem;">
+            <option value="10">Last 10</option>
+            <option value="25" selected>Last 25</option>
+            <option value="50">Last 50</option>
+            <option value="100">Last 100</option>
+          </select>
+          <button onclick="loadLedger()" class="btn" style="font-size:.78rem;padding:.4rem .8rem;">↻ Refresh</button>
+        </div>
+      </div>
+      <div id="ledgerContent" style="min-height:120px;">
+        <div style="text-align:center;padding:2rem;color:var(--text-muted);">Click the Ledger tab to load transactions...</div>
       </div>
     </div>
   </div>
@@ -1361,6 +1386,7 @@ function switchTab(name, btn) {
   if (name === 'explorer') loadChain();
   if (name === 'models')   loadMyModels();
   if (name === 'registry') loadRegistry();
+  if (name === 'ledger')   loadLedger();
   if (name === 'proof') {
     setTimeout(() => {
       if (typeof loadWalletInfo    === 'function') loadWalletInfo();
@@ -3127,6 +3153,91 @@ function loadScript(src) {
 
 
 
+
+// ── Transaction Ledger ────────────────────────────────────────────────
+
+async function loadLedger() {
+  const out = document.getElementById('ledgerContent');
+  if (!out) return;
+  out.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);"><span class="spinner"></span> Fetching transactions from Algorand Indexer...</div>';
+
+  try {
+    const limit = document.getElementById('ledgerLimit')?.value || 25;
+    const res = await fetch(`${API}/algo/ledger?limit=${limit}`);
+    const d   = await res.json();
+    if (!d.success) {
+      out.innerHTML = `<div class="result-box err">Error: ${d.error}</div>`;
+      return;
+    }
+
+    if (!d.ledger || d.ledger.length === 0) {
+      out.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No transactions found for this wallet.</div>';
+      return;
+    }
+
+    const actionBadge = (action) => {
+      const colors = {
+        'registration': 'background:#6c5ce7;color:#fff',
+        'smart-contract': 'background:#00cec9;color:#0d111e',
+        'contract-call': 'background:#fdcb6e;color:#0d111e',
+        'transfer': 'background:#636e72;color:#fff',
+      };
+      const style = colors[action] || colors['transfer'];
+      return `<span style="${style};padding:.15rem .5rem;border-radius:4px;font-size:.68rem;font-weight:700;text-transform:uppercase;">${action}</span>`;
+    };
+
+    const timeAgo = (ts) => {
+      if (!ts) return '—';
+      const diff = Math.floor(Date.now() / 1000) - ts;
+      if (diff < 60) return `${diff}s ago`;
+      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+      return `${Math.floor(diff / 86400)}d ago`;
+    };
+
+    let rows = d.ledger.map(tx => `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:.55rem .5rem;font-size:.78rem;color:var(--primary);font-weight:600;">#${tx.round?.toLocaleString() || '—'}</td>
+        <td style="padding:.55rem .5rem;font-size:.74rem;font-family:monospace;">
+          <a href="${tx.explorer_url}" target="_blank" style="color:var(--primary);">${tx.txid?.substring(0,12) || '—'}…</a>
+        </td>
+        <td style="padding:.55rem .5rem;">${actionBadge(tx.action)}</td>
+        <td style="padding:.55rem .5rem;font-size:.78rem;">${tx.model_name || '—'}</td>
+        <td style="padding:.55rem .5rem;font-size:.78rem;color:var(--text-muted);">${tx.owner || '—'}</td>
+        <td style="padding:.55rem .5rem;font-size:.74rem;color:var(--text-muted);">${tx.fee?.toFixed(4) || '—'}</td>
+        <td style="padding:.55rem .5rem;font-size:.74rem;color:var(--text-muted);">${timeAgo(tx.timestamp)}</td>
+      </tr>
+    `).join('');
+
+    out.innerHTML = `
+      <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:.5rem;">
+        Showing <strong style="color:var(--primary);">${d.count}</strong> transactions from wallet
+        <code style="font-size:.7rem;">${d.wallet?.substring(0,8)}…${d.wallet?.slice(-6)}</code>
+      </div>
+      <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border);">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:rgba(108,92,231,.12);text-align:left;">
+              <th style="padding:.6rem .5rem;font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;">Round</th>
+              <th style="padding:.6rem .5rem;font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;">TxID</th>
+              <th style="padding:.6rem .5rem;font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;">Action</th>
+              <th style="padding:.6rem .5rem;font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;">Model</th>
+              <th style="padding:.6rem .5rem;font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;">Owner</th>
+              <th style="padding:.6rem .5rem;font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;">Fee</th>
+              <th style="padding:.6rem .5rem;font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;">Time</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:.6rem;font-size:.7rem;color:var(--text-muted);text-align:center;">
+        Live data from <a href="https://testnet-idx.algonode.cloud" target="_blank" style="color:var(--primary);">AlgoNode Indexer</a> · Each TxID links to the Algorand Explorer
+      </div>`;
+
+  } catch(e) {
+    out.innerHTML = `<div class="result-box err">Network error: ${e.message}</div>`;
+  }
+}
 
 // ── Live Algorand Network Stats ───────────────────────────────────────
 let _netTimer = null;
