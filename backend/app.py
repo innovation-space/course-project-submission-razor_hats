@@ -633,6 +633,80 @@ def algo_verify_onchain(model_id):
     }), 200
 
 
+@app.route("/api/algo/merkle", methods=["GET"])
+def algo_merkle_tree():
+    """
+    Build a Merkle tree from ALL registered model hashes.
+    Returns the tree structure (for D3.js), the Merkle root, and leaves.
+    """
+    import hashlib
+
+    # Collect active model hashes
+    leaves_data = []
+    for mid, m in models_registry.items():
+        if m.get("isActive", True):
+            leaves_data.append({
+                "model_id": mid,
+                "model_name": m.get("modelName", "Unknown"),
+                "hash": m.get("modelHash", ""),
+                "owner": m.get("owner", ""),
+            })
+
+    if not leaves_data:
+        return jsonify({
+            "success": True,
+            "count": 0,
+            "merkleRoot": None,
+            "tree": None,
+            "message": "No models registered yet. Register a model to see the Merkle tree.",
+        }), 200
+
+    # Build leaf nodes
+    def sha256(text):
+        return hashlib.sha256(text.encode()).hexdigest()
+
+    leaf_nodes = []
+    for lf in leaves_data:
+        leaf_nodes.append({
+            "hash": lf["hash"],
+            "label": lf["model_name"],
+            "modelId": lf["model_id"],
+            "owner": lf["owner"],
+            "txType": "registration",
+            "children": [],
+        })
+
+    # If odd number of leaves, duplicate the last one
+    if len(leaf_nodes) % 2 != 0:
+        leaf_nodes.append({**leaf_nodes[-1], "label": leaf_nodes[-1]["label"] + " (dup)"})
+
+    # Build tree bottom-up
+    def build_tree(nodes):
+        if len(nodes) == 1:
+            return nodes[0]
+        parents = []
+        for i in range(0, len(nodes), 2):
+            left = nodes[i]
+            right = nodes[i + 1] if i + 1 < len(nodes) else nodes[i]
+            parent_hash = sha256(left["hash"] + right["hash"])
+            parents.append({
+                "hash": parent_hash,
+                "label": "",
+                "children": [left, right],
+            })
+        return build_tree(parents)
+
+    tree = build_tree(leaf_nodes)
+
+    return jsonify({
+        "success": True,
+        "count": len(leaves_data),
+        "merkleRoot": tree["hash"],
+        "tree": tree,
+        "leaves": [{"hash": lf["hash"], "txType": "registration"} for lf in leaves_data],
+    }), 200
+
+
 @app.route("/api/stats/activity", methods=["GET"])
 def get_activity():
     """
