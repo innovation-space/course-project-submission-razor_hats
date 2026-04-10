@@ -213,9 +213,17 @@ def get_transaction_info(txid: str) -> dict:
 def get_wallet_info() -> dict:
     """
     Return live account stats for the server wallet from Algorand Testnet.
+    Uses direct HTTP with timeout instead of SDK (avoids indefinite blocking).
     """
     try:
-        info = client.account_info(ADDRESS)
+        # Direct REST call with explicit timeout
+        url  = f"{ALGOD_ADDRESS}/v2/accounts/{ADDRESS}"
+        resp = requests.get(url, timeout=8)
+
+        if resp.status_code != 200:
+            return {"success": False, "error": f"AlgoNode returned {resp.status_code}"}
+
+        info = resp.json()
 
         from contract import load_app_id
         app_id       = load_app_id()
@@ -225,16 +233,50 @@ def get_wallet_info() -> dict:
         )
 
         return {
-            "success": True,
-            "address":            ADDRESS,
-            "balance_algo":       info.get("amount", 0) / 1e6,
-            "min_balance_algo":   info.get("min-balance", 0) / 1e6,
-            "total_txns":         info.get("total-apps-opted-in", 0),  # fallback
-            "status":             info.get("status", "Offline"),
-            "created_at_round":   info.get("created-at-round"),
-            "app_id":             app_id,
-            "app_explorer_url":   app_explorer,
-            "explorer_url":       f"https://lora.algokit.io/testnet/account/{ADDRESS}",
+            "success":          True,
+            "address":          ADDRESS,
+            "balance_algo":     info.get("amount", 0) / 1e6,
+            "min_balance_algo": info.get("min-balance", 0) / 1e6,
+            "status":           info.get("status", "Offline"),
+            "created_at_round": info.get("created-at-round"),
+            "app_id":           app_id,
+            "app_explorer_url": app_explorer,
+            "explorer_url":     f"https://lora.algokit.io/testnet/account/{ADDRESS}",
+        }
+
+    except requests.Timeout:
+        return {"success": False, "error": "AlgoNode timed out (>8s). Check your internet connection."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── 4. Live Algorand network stats ─────────────────────────────────────
+
+def get_network_stats() -> dict:
+    """
+    Fetch live Algorand Testnet node status.
+    Returns current block round, time-since-last-block, network health.
+    """
+    try:
+        status = client.status()
+
+        last_round  = status.get("last-round", 0)
+        # time-since-last-round is in nanoseconds
+        ns_since    = status.get("time-since-last-round", 0)
+        sec_since   = round(ns_since / 1_000_000_000, 1)
+
+        # Algorand average block time is ~3.3–3.6 seconds on testnet
+        avg_block_time = 3.4
+
+        return {
+            "success":         True,
+            "network":         "Algorand Testnet",
+            "last_round":      last_round,
+            "sec_since_block": sec_since,
+            "avg_block_time":  avg_block_time,
+            "is_healthy":      not status.get("stopped-at-unsupported-round", False),
+            "node_version":    status.get("last-version", "unknown"),
+            "catchup_time":    status.get("catchup-time", 0),
         }
 
     except Exception as e:
