@@ -574,6 +574,13 @@ def algo_network_stats():
     return jsonify(data), (200 if data.get("success") else 503)
 
 
+@app.route("/api/algo/ledger", methods=["GET"])
+def algo_transaction_ledger():
+    limit = request.args.get("limit", 50, type=int)
+    data = algorand_client.get_transaction_ledger(limit=min(limit, 100))
+    return jsonify(data), (200 if data.get("success") else 503)
+
+
 @app.route("/api/stats/activity", methods=["GET"])
 def get_activity():
     """

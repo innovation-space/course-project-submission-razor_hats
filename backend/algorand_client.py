@@ -281,3 +281,69 @@ def get_network_stats() -> dict:
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ── 5. Transaction history ledger ──────────────────────────────────────
+
+def get_transaction_ledger(limit: int = 50) -> dict:
+    """
+    Fetch recent transactions from the server wallet via the Algorand Indexer.
+    Parses the note field to extract model metadata from BlockVerify txns.
+    """
+    try:
+        url = (
+            f"{INDEXER_ADDRESS}/v2/accounts/{ADDRESS}/transactions"
+            f"?limit={limit}"
+        )
+        resp = requests.get(url, timeout=12)
+        if resp.status_code != 200:
+            return {"success": False, "error": f"Indexer returned {resp.status_code}"}
+
+        data = resp.json()
+        raw_txns = data.get("transactions", [])
+
+        ledger = []
+        for tx in raw_txns:
+            entry = {
+                "txid":        tx.get("id", ""),
+                "round":       tx.get("confirmed-round", 0),
+                "timestamp":   tx.get("round-time", 0),
+                "type":        tx.get("tx-type", ""),
+                "fee":         tx.get("fee", 0) / 1e6,
+                "explorer_url": f"https://lora.algokit.io/testnet/transaction/{tx.get('id', '')}",
+            }
+
+            # Try to decode the note field for BlockVerify metadata
+            import base64
+            raw_note = tx.get("note", "")
+            if raw_note:
+                try:
+                    decoded = base64.b64decode(raw_note).decode("utf-8")
+                    meta = json.loads(decoded)
+                    entry["model_name"] = meta.get("name", "")
+                    entry["model_id"]   = meta.get("id", "")
+                    entry["model_hash"] = meta.get("hash", "")[:16] + "..."
+                    entry["owner"]      = meta.get("owner", "")
+                    entry["action"]     = "registration"
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    entry["action"] = "contract-call"
+            else:
+                # Application call (smart contract) or other tx
+                if tx.get("tx-type") == "appl":
+                    entry["action"] = "smart-contract"
+                else:
+                    entry["action"] = "transfer"
+
+            ledger.append(entry)
+
+        return {
+            "success":    True,
+            "count":      len(ledger),
+            "ledger":     ledger,
+            "wallet":     ADDRESS,
+        }
+
+    except requests.Timeout:
+        return {"success": False, "error": "Indexer timed out (>12s)"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
