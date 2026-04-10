@@ -633,6 +633,66 @@ def algo_verify_onchain(model_id):
     }), 200
 
 
+@app.route("/api/activity-feed", methods=["GET"])
+def activity_feed():
+    """
+    Aggregated activity feed — registrations, verifications, version additions.
+    Returns a chronological list of recent platform events.
+    """
+    limit = min(int(request.args.get("limit", 20)), 50)
+    events = []
+
+    # 1. Registrations
+    for mid, m in models_registry.items():
+        events.append({
+            "type": "register",
+            "icon": "📝",
+            "user": m.get("owner", "unknown"),
+            "modelName": m.get("modelName", "Unknown"),
+            "modelId": mid,
+            "timestamp": m.get("registeredAt", 0),
+            "message": f"registered <strong>{m.get('modelName','')}</strong>",
+            "hash": m.get("modelHash", "")[:16],
+        })
+
+        # 1b. Version additions (skip v1, that's the registration)
+        for v in m.get("versions", [])[1:]:
+            events.append({
+                "type": "version",
+                "icon": "📋",
+                "user": m.get("owner", "unknown"),
+                "modelName": m.get("modelName", "Unknown"),
+                "modelId": mid,
+                "timestamp": v.get("timestamp", 0),
+                "message": f"added v{v.get('version','')} to <strong>{m.get('modelName','')}</strong>",
+                "hash": v.get("hash", "")[:16],
+            })
+
+    # 2. Verifications
+    for mid, logs in verification_logs.items():
+        model = models_registry.get(mid, {})
+        mname = model.get("modelName", mid)
+        for log in logs:
+            status = "✅ verified" if log.get("isValid") else "❌ failed verification of"
+            events.append({
+                "type": "verify",
+                "icon": "✅" if log.get("isValid") else "❌",
+                "user": log.get("verifier", "unknown"),
+                "modelName": mname,
+                "modelId": mid,
+                "timestamp": log.get("timestamp", 0),
+                "message": f"{status} <strong>{mname}</strong>",
+                "hash": log.get("providedHash", "")[:16],
+                "isValid": log.get("isValid", False),
+            })
+
+    # Sort newest first, take limit
+    events.sort(key=lambda e: e["timestamp"], reverse=True)
+    events = events[:limit]
+
+    return jsonify({"success": True, "events": events, "total": len(events)}), 200
+
+
 @app.route("/api/tamper-simulate/<model_id>", methods=["POST"])
 @require_auth
 def tamper_simulate(model_id):

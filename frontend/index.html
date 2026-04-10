@@ -190,6 +190,20 @@
     .tab-content { display: none; }
     .tab-content.active { display: block; animation: slideUpFade .4s cubic-bezier(0.16,1,0.3,1); }
     @keyframes slideUpFade { from { opacity:0; transform:translateY(15px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes feedPulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+    .feed-item {
+      display: flex; align-items: flex-start; gap: .55rem; padding: .45rem .5rem;
+      border-radius: 8px; font-size: .78rem; transition: background .2s; animation: slideUpFade .3s ease;
+    }
+    .feed-item:hover { background: rgba(108,92,231,.06); }
+    .feed-item .feed-icon { font-size: .9rem; flex-shrink: 0; margin-top: .05rem; }
+    .feed-item .feed-body { flex: 1; min-width: 0; }
+    .feed-item .feed-user { font-weight: 700; color: var(--primary-h); }
+    .feed-item .feed-time { font-size: .65rem; color: var(--text-muted); margin-top: .1rem; }
+    .feed-item .feed-badge {
+      font-size: .6rem; font-weight: 700; padding: .15rem .4rem; border-radius: 4px;
+      text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; margin-top: .1rem;
+    }
 
     /* Hide old .tabs class (horizontal) — we use .sidebar now */
     .tabs { display: none; }
@@ -720,6 +734,24 @@
     </div>
     <div style="position:relative;height:180px;">
       <canvas id="activityChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Live Activity Feed -->
+  <div class="card" id="activityFeedCard" style="margin-bottom:1.2rem;padding:0;overflow:hidden;">
+    <div onclick="toggleFeedPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:.7rem 1.2rem;cursor:pointer;user-select:none;background:rgba(108,92,231,0.04);border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:.5rem;">
+        <span style="font-size:.85rem;">📡</span>
+        <span style="font-size:.85rem;font-weight:700;">Live Activity Feed</span>
+        <span id="feedPulse" style="width:8px;height:8px;border-radius:50%;background:#00b894;display:inline-block;animation:feedPulse 2s ease-in-out infinite;"></span>
+        <span id="feedCount" style="font-size:.7rem;color:var(--text-muted);font-weight:600;"></span>
+      </div>
+      <span id="feedToggleArrow" style="font-size:.7rem;color:var(--text-muted);transition:transform .3s;">▼</span>
+    </div>
+    <div id="feedPanel" style="max-height:0;overflow:hidden;transition:max-height .4s cubic-bezier(0.4,0,0.2,1);">
+      <div id="feedList" style="padding:.5rem .8rem .8rem;max-height:260px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
+        <div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:.8rem;">Loading activity feed...</div>
+      </div>
     </div>
   </div>
 
@@ -2664,6 +2696,109 @@ function downloadReport(modelId, modelName) {
   a.click();
   document.body.removeChild(a);
 }
+
+// ── Live Activity Feed ────────────────────────────────────────────────
+
+let _feedOpen = false;
+let _feedEvents = [];
+let _feedTimer = null;
+
+function toggleFeedPanel() {
+  const panel = document.getElementById('feedPanel');
+  const arrow = document.getElementById('feedToggleArrow');
+  _feedOpen = !_feedOpen;
+  if (_feedOpen) {
+    panel.style.maxHeight = '300px';
+    arrow.style.transform = 'rotate(180deg)';
+    loadActivityFeed();
+  } else {
+    panel.style.maxHeight = '0';
+    arrow.style.transform = 'rotate(0)';
+  }
+}
+
+function timeAgo(ts) {
+  const diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 5) return 'just now';
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function badgeStyle(type) {
+  switch (type) {
+    case 'register': return 'background:rgba(108,92,231,0.15);color:#a29bfe;';
+    case 'verify':   return 'background:rgba(0,184,148,0.15);color:#00b894;';
+    case 'version':  return 'background:rgba(253,203,110,0.15);color:#fdcb6e;';
+    default:         return 'background:rgba(255,255,255,0.08);color:var(--text-muted);';
+  }
+}
+
+function badgeLabel(type) {
+  switch (type) {
+    case 'register': return 'Registered';
+    case 'verify':   return 'Verified';
+    case 'version':  return 'New Version';
+    default:         return type;
+  }
+}
+
+async function loadActivityFeed() {
+  try {
+    const res = await fetch(`${API}/activity-feed?limit=15`);
+    const d = await res.json();
+    if (!d.success) return;
+    _feedEvents = d.events;
+    renderFeedItems();
+    document.getElementById('feedCount').textContent = `${d.total} events`;
+  } catch (e) {
+    document.getElementById('feedList').innerHTML =
+      '<div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:.78rem;">Unable to load feed</div>';
+  }
+}
+
+function renderFeedItems() {
+  const list = document.getElementById('feedList');
+  if (!_feedEvents.length) {
+    list.innerHTML = '<div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.8rem;">No activity yet. Register your first model!</div>';
+    return;
+  }
+  let h = '';
+  _feedEvents.forEach((ev, i) => {
+    h += `
+      <div class="feed-item" style="animation-delay:${i * 40}ms;">
+        <span class="feed-icon">${ev.icon}</span>
+        <div class="feed-body">
+          <div><span class="feed-user">${ev.user}</span> ${ev.message}</div>
+          <div class="feed-time" data-feed-ts="${ev.timestamp}">${timeAgo(ev.timestamp)}</div>
+        </div>
+        <span class="feed-badge" style="${badgeStyle(ev.type)}">${badgeLabel(ev.type)}</span>
+      </div>`;
+  });
+  list.innerHTML = h;
+}
+
+// Update relative timestamps every second
+setInterval(() => {
+  document.querySelectorAll('[data-feed-ts]').forEach(el => {
+    el.textContent = timeAgo(parseInt(el.dataset.feedTs));
+  });
+}, 1000);
+
+// Auto-refresh feed every 15 seconds
+setInterval(() => {
+  if (_feedOpen) loadActivityFeed();
+}, 15000);
+
+// Load feed on page load (collapsed, but pre-fetch count)
+setTimeout(() => {
+  fetch(`${API}/activity-feed?limit=1`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) document.getElementById('feedCount').textContent = `${d.total} events`;
+    }).catch(() => {});
+}, 1500);
 
 // ── Init ──
 refreshStats();
