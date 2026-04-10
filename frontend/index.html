@@ -918,6 +918,37 @@
     </div>
   </div>
 
+  <!-- Merkle Tree Visualization -->
+  <div class="tab-content" id="tab-proof-merkle" style="display:none;">
+  </div>
+
+  <!-- Merkle tree card inside proof tab — rendered inline -->
+  <script>
+  // Inject the Merkle card into the proof tab (before its closing div)
+  (function() {
+    const proofTab = document.getElementById('tab-proof');
+    if (!proofTab) return;
+    const merkleCard = document.createElement('div');
+    merkleCard.className = 'card';
+    merkleCard.style.marginTop = '1.2rem';
+    merkleCard.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem;">
+        <div>
+          <h2 style="margin:0;">🌲 Model Registry Merkle Tree</h2>
+          <p class="subtitle" style="margin-top:.3rem;">A cryptographic Merkle tree built from all registered model hashes. Changing any single model hash changes the entire root — tamper-proof integrity visualization.</p>
+        </div>
+        <button onclick="loadAlgoMerkle()" class="btn" style="font-size:.78rem;padding:.4rem .8rem;">🔄 Rebuild Tree</button>
+      </div>
+      <div id="algoMerkleRoot" style="font-size:.82rem;font-family:var(--mono);background:rgba(108,92,231,.12);border:1px solid rgba(108,92,231,.3);border-radius:8px;padding:.6rem 1rem;margin-bottom:.8rem;word-break:break-all;display:none;"></div>
+      <div id="algoMerkleInfo" style="font-size:.78rem;color:var(--text-muted);margin-bottom:.5rem;"></div>
+      <div id="algoMerkleSvg" style="width:100%;overflow-x:auto;min-height:120px;">
+        <div style="text-align:center;padding:2rem;color:var(--text-muted);">Click "Rebuild Tree" or switch to Chain Proof tab to generate the Merkle tree.</div>
+      </div>
+    `;
+    proofTab.appendChild(merkleCard);
+  })();
+  </script>
+
   <!-- Transaction Ledger -->
   <div class="tab-content" id="tab-ledger">
     <div class="card">
@@ -1392,6 +1423,7 @@ function switchTab(name, btn) {
       if (typeof loadWalletInfo    === 'function') loadWalletInfo();
       if (typeof loadContractInfo  === 'function') loadContractInfo();
       if (typeof startNetworkPolling === 'function') startNetworkPolling();
+      if (typeof loadAlgoMerkle    === 'function') loadAlgoMerkle();
     }, 150);
   } else {
     if (typeof stopNetworkPolling === 'function') stopNetworkPolling();
@@ -3155,6 +3187,317 @@ function loadScript(src) {
 
 
 
+
+// ── Algorand Model Registry Merkle Tree ───────────────────────────────
+
+async function loadAlgoMerkle() {
+  const rootEl = document.getElementById('algoMerkleRoot');
+  const infoEl = document.getElementById('algoMerkleInfo');
+  const svgEl  = document.getElementById('algoMerkleSvg');
+  if (!svgEl) return;
+
+  infoEl.textContent = '⏳ Building Merkle tree from registered model hashes...';
+  rootEl.style.display = 'none';
+  svgEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);"><span class="spinner"></span> Loading...</div>';
+
+  try {
+    const res = await fetch(`${API}/algo/merkle`);
+    const d   = await res.json();
+
+    if (!d.success) {
+      infoEl.textContent = 'Error: ' + d.error;
+      svgEl.innerHTML = '';
+      return;
+    }
+
+    if (!d.tree) {
+      infoEl.textContent = d.message || 'No models registered.';
+      svgEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">Register at least one model to visualize the Merkle tree.</div>';
+      return;
+    }
+
+    infoEl.innerHTML = `<strong style="color:var(--primary);">${d.count}</strong> model(s) → binary Merkle tree with SHA-256 pairwise hashing`;
+    rootEl.innerHTML = `<span style="color:var(--text-muted);font-size:.7rem;font-weight:700;text-transform:uppercase;">MERKLE ROOT</span><br>${d.merkleRoot}`;
+    rootEl.style.display = 'block';
+
+    // Render the D3 tree
+    _drawAlgoMerkle(d.tree, d.leaves, svgEl);
+
+  } catch(e) {
+    infoEl.textContent = 'Network error: ' + e.message;
+    svgEl.innerHTML = '';
+  }
+}
+
+function _drawAlgoMerkle(tree, leaves, container) {
+  container.innerHTML = '';
+
+  const isDark = !document.body.classList.contains('light-theme');
+
+  // ── Premium color palette ──
+  const palette = {
+    leaf:     { start: '#6c5ce7', end: '#a29bfe' },
+    internal: { start: '#00b894', end: '#55efc4' },
+    root:     { start: '#fd79a8', end: '#e84393' },
+    link:     isDark ? 'rgba(108,92,231,0.35)' : 'rgba(108,92,231,0.25)',
+    linkHi:   isDark ? 'rgba(108,92,231,0.7)' : 'rgba(108,92,231,0.5)',
+    glow:     '#6c5ce7',
+    rootGlow: '#fd79a8',
+    label:    isDark ? '#feca57' : '#f39c12',
+    text:     '#ffffff',
+    leafTag:  isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
+    bg:       isDark ? '#0d111e' : '#f5f6fa',
+  };
+
+  const W = Math.max(container.clientWidth || 0, 350);
+
+  const root = d3.hierarchy(tree, d => d.children && d.children.length ? d.children : null);
+  const maxDepth = root.height;
+
+  const LABEL_HEADROOM = 50;
+  const nodeW = 160, levelGap = 115;
+  const margin = { top: LABEL_HEADROOM + 20, right: 24, bottom: 50, left: 24 };
+
+  const treeLayout = d3.tree().nodeSize([nodeW, levelGap]);
+  treeLayout(root);
+
+  let minX = Infinity, maxX = -Infinity;
+  root.each(d => { minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x); });
+
+  const treeSpan = maxX - minX + nodeW;
+  const svgW = Math.max(W, treeSpan + margin.left + margin.right);
+  const svgH = (maxDepth + 1) * levelGap + margin.top + margin.bottom;
+  const offsetX = svgW / 2 - (minX + maxX) / 2;
+  const offsetY = margin.top;
+
+  // ── Inject CSS animation for pulsing root ──
+  if (!document.getElementById('merkle-pulse-style')) {
+    const style = document.createElement('style');
+    style.id = 'merkle-pulse-style';
+    style.textContent = `
+      @keyframes mkPulse {
+        0%, 100% { filter: drop-shadow(0 0 6px ${palette.rootGlow}); }
+        50% { filter: drop-shadow(0 0 18px ${palette.rootGlow}) drop-shadow(0 0 30px ${palette.rootGlow}40); }
+      }
+      @keyframes mkFadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes mkLinkDraw {
+        from { stroke-dashoffset: 300; }
+        to   { stroke-dashoffset: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const svg = d3.select(container).append('svg')
+    .attr('width', svgW).attr('height', svgH)
+    .style('background', 'transparent')
+    .style('overflow', 'visible');
+
+  // ── SVG Defs: gradients + filters ──
+  const defs = svg.append('defs');
+
+  // Node gradients
+  const makeGrad = (id, c1, c2) => {
+    const lg = defs.append('linearGradient').attr('id', id)
+      .attr('x1','0%').attr('y1','0%').attr('x2','100%').attr('y2','100%');
+    lg.append('stop').attr('offset','0%').attr('stop-color', c1);
+    lg.append('stop').attr('offset','100%').attr('stop-color', c2);
+  };
+  makeGrad('mkGradLeaf', palette.leaf.start, palette.leaf.end);
+  makeGrad('mkGradInt',  palette.internal.start, palette.internal.end);
+  makeGrad('mkGradRoot', palette.root.start, palette.root.end);
+
+  // Glow filter
+  const glow = defs.append('filter').attr('id','mkGlow')
+    .attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  glow.append('feGaussianBlur').attr('stdDeviation','4').attr('result','blur');
+  glow.append('feComposite').attr('in','SourceGraphic').attr('in2','blur').attr('operator','over');
+
+  // Strong glow for root
+  const glowStrong = defs.append('filter').attr('id','mkGlowStrong')
+    .attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  glowStrong.append('feGaussianBlur').attr('stdDeviation','8').attr('result','blur');
+  glowStrong.append('feComposite').attr('in','SourceGraphic').attr('in2','blur').attr('operator','over');
+
+  // Link gradient
+  const linkGrad = defs.append('linearGradient').attr('id','mkLinkGrad')
+    .attr('x1','0%').attr('y1','0%').attr('x2','0%').attr('y2','100%');
+  linkGrad.append('stop').attr('offset','0%').attr('stop-color', palette.linkHi);
+  linkGrad.append('stop').attr('offset','100%').attr('stop-color', palette.link);
+
+  const g = svg.append('g')
+    .attr('transform', `translate(${offsetX},${offsetY})`);
+
+  // ── Animated links (curved bezier) ──
+  const links = g.selectAll('.mk-link')
+    .data(root.links()).enter()
+    .append('path')
+    .attr('fill', 'none')
+    .attr('stroke', 'url(#mkLinkGrad)')
+    .attr('stroke-width', 2.5)
+    .attr('stroke-linecap', 'round')
+    .attr('d', d3.linkVertical().x(d => d.x).y(d => d.y));
+
+  // Animate link drawing
+  links.each(function() {
+    const pathLen = this.getTotalLength();
+    d3.select(this)
+      .attr('stroke-dasharray', pathLen)
+      .attr('stroke-dashoffset', pathLen)
+      .transition()
+      .duration(800)
+      .delay((d, i) => i * 100)
+      .ease(d3.easeCubicOut)
+      .attr('stroke-dashoffset', 0);
+  });
+
+  // ── Small dots at link junctions ──
+  g.selectAll('.mk-dot')
+    .data(root.descendants().filter(d => d.depth > 0)).enter()
+    .append('circle')
+    .attr('cx', d => d.x).attr('cy', d => d.y - levelGap / 2 + 10)
+    .attr('r', 2.5)
+    .attr('fill', palette.linkHi)
+    .attr('opacity', 0.5);
+
+  // ── Nodes ──
+  const nodeG = g.selectAll('.mk-node')
+    .data(root.descendants()).enter()
+    .append('g')
+    .attr('transform', d => `translate(${d.x},${d.y})`)
+    .style('opacity', 0);
+
+  // Fade-in animation
+  nodeG.transition()
+    .duration(500)
+    .delay((d, i) => 300 + i * 80)
+    .ease(d3.easeCubicOut)
+    .style('opacity', 1);
+
+  function gradId(d) {
+    if (d.depth === 0) return 'url(#mkGradRoot)';
+    if (!d.children || !d.children.length) return 'url(#mkGradLeaf)';
+    return 'url(#mkGradInt)';
+  }
+  function filterId(d) {
+    if (d.depth === 0) return 'url(#mkGlowStrong)';
+    return 'url(#mkGlow)';
+  }
+
+  // Outer glow rect (slightly larger, blurred)
+  nodeG.append('rect')
+    .attr('x', -62).attr('y', -20)
+    .attr('width', 124).attr('height', 40)
+    .attr('rx', 14)
+    .attr('fill', d => {
+      if (d.depth === 0) return palette.root.start;
+      if (!d.children || !d.children.length) return palette.leaf.start;
+      return palette.internal.start;
+    })
+    .attr('opacity', 0.15)
+    .attr('filter', 'url(#mkGlow)');
+
+  // Main pill
+  nodeG.append('rect')
+    .attr('x', -56).attr('y', -18)
+    .attr('width', 112).attr('height', 36)
+    .attr('rx', 12)
+    .attr('fill', d => gradId(d))
+    .attr('stroke', d => d.depth === 0 ? palette.label : 'rgba(255,255,255,0.15)')
+    .attr('stroke-width', d => d.depth === 0 ? 2.5 : 1)
+    .style('cursor', 'pointer')
+    .style('animation', d => d.depth === 0 ? 'mkPulse 2.5s ease-in-out infinite' : 'none')
+    .append('title')
+    .text(d => `Full hash:\n${d.data.hash}`);
+
+  // Shine highlight on top of pill
+  nodeG.append('rect')
+    .attr('x', -52).attr('y', -16)
+    .attr('width', 104).attr('height', 14)
+    .attr('rx', 8)
+    .attr('fill', 'rgba(255,255,255,0.12)')
+    .attr('pointer-events', 'none');
+
+  // Hash text
+  nodeG.append('text')
+    .attr('text-anchor', 'middle').attr('dy', '0.35em')
+    .attr('font-size', '10.5px')
+    .attr('font-family', 'JetBrains Mono, Fira Code, monospace')
+    .attr('fill', palette.text)
+    .attr('font-weight', '600')
+    .attr('pointer-events', 'none')
+    .text(d => d.data.hash ? d.data.hash.slice(0, 10) + '…' : '');
+
+  // ── Model name badge under leaf nodes ──
+  const leafNodes = nodeG.filter(d => !d.children || !d.children.length);
+
+  leafNodes.append('rect')
+    .attr('x', -42).attr('y', 22)
+    .attr('width', 84).attr('height', 18)
+    .attr('rx', 9)
+    .attr('fill', isDark ? 'rgba(108,92,231,0.2)' : 'rgba(108,92,231,0.12)')
+    .attr('stroke', isDark ? 'rgba(108,92,231,0.4)' : 'rgba(108,92,231,0.3)')
+    .attr('stroke-width', 0.8);
+
+  leafNodes.append('text')
+    .attr('text-anchor', 'middle').attr('y', 35)
+    .attr('font-size', '8.5px')
+    .attr('font-weight', '600')
+    .attr('fill', palette.leafTag)
+    .attr('pointer-events', 'none')
+    .text(d => {
+      const label = d.data.label || d.data.modelId || '';
+      return label.length > 14 ? label.slice(0, 12) + '…' : label;
+    });
+
+  // ── Crown label above root ──
+  g.append('text')
+    .attr('x', root.x).attr('y', root.y - LABEL_HEADROOM + 10)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '11px')
+    .attr('font-weight', '800')
+    .attr('letter-spacing', '0.12em')
+    .attr('fill', palette.label)
+    .attr('filter', 'url(#mkGlow)')
+    .text('👑 MERKLE ROOT');
+
+  // ── Decorative particle dots ──
+  for (let i = 0; i < 12; i++) {
+    const px = Math.random() * svgW;
+    const py = Math.random() * svgH;
+    svg.append('circle')
+      .attr('cx', px).attr('cy', py)
+      .attr('r', Math.random() * 1.8 + 0.5)
+      .attr('fill', palette.glow)
+      .attr('opacity', Math.random() * 0.2 + 0.05);
+  }
+
+  // ── Legend bar ──
+  const legendY = svgH - 28;
+  const legendBg = svg.append('g');
+  legendBg.append('rect')
+    .attr('x', svgW / 2 - 170).attr('y', legendY - 12)
+    .attr('width', 340).attr('height', 24)
+    .attr('rx', 12)
+    .attr('fill', isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)')
+    .attr('stroke', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
+    .attr('stroke-width', 0.5);
+
+  const legendItems = [
+    { col: palette.root.start, label: 'Root (Merkle)' },
+    { col: palette.internal.start, label: 'Internal Node' },
+    { col: palette.leaf.start, label: 'Leaf (Model)' },
+  ];
+  legendItems.forEach((it, i) => {
+    const lx = svgW / 2 - 145 + i * 115;
+    svg.append('circle').attr('cx', lx).attr('cy', legendY).attr('r', 5).attr('fill', it.col).attr('filter','url(#mkGlow)');
+    svg.append('text').attr('x', lx + 10).attr('y', legendY + 3.5)
+      .attr('font-size', '9px').attr('font-weight','600').attr('fill', isDark ? '#aaa' : '#555').text(it.label);
+  });
+}
 
 // ── Smart Contract On-Chain Verification ──────────────────────────────
 
