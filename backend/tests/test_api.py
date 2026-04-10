@@ -22,6 +22,9 @@ def reset_state(monkeypatch):
     verification_logs.clear()
     _rate_log.clear()
 
+    # Prevent tests from writing to the real JSON database
+    monkeypatch.setattr(app, "save_state", lambda: None)
+
     # Mock Algorand Testnet API
     global mock_algo_round
     mock_algo_round = 1000
