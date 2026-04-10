@@ -151,3 +151,65 @@ def call_contract_register(algod_client: algod.AlgodClient,
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ──────────────────────────────────────────────
+#  Read: verify model hash from on-chain state
+# ──────────────────────────────────────────────
+
+def read_contract_state(app_id: int, model_id: str) -> dict:
+    """
+    Read the smart contract's global state for a specific model_id.
+    Returns the on-chain hash so the caller can compare it with the local hash.
+    Uses direct HTTP to avoid SDK timeout issues.
+    """
+    import requests
+
+    try:
+        algod_url = "https://testnet-api.algonode.cloud"
+        url = f"{algod_url}/v2/applications/{app_id}"
+        resp = requests.get(url, timeout=10)
+
+        if resp.status_code != 200:
+            return {"success": False, "error": f"AlgoNode returned {resp.status_code}"}
+
+        app_data = resp.json()
+        global_state = (
+            app_data.get("params", {})
+            .get("global-state", [])
+        )
+
+        # Algorand stores keys as base64-encoded bytes
+        target_key_b64 = base64.b64encode(
+            model_id[:64].encode()
+        ).decode()
+
+        for entry in global_state:
+            if entry.get("key") == target_key_b64:
+                # Value is a byte-slice (type 1)
+                value = entry.get("value", {})
+                if value.get("type") == 1:
+                    on_chain_hash = base64.b64decode(
+                        value.get("bytes", "")
+                    ).decode("utf-8", errors="replace")
+                    return {
+                        "success":       True,
+                        "found":         True,
+                        "model_id":      model_id,
+                        "on_chain_hash": on_chain_hash,
+                        "app_id":        app_id,
+                    }
+
+        # Key not found in global state
+        return {
+            "success":  True,
+            "found":    False,
+            "model_id": model_id,
+            "app_id":   app_id,
+            "message":  "Model ID not found in smart contract global state",
+        }
+
+    except requests.Timeout:
+        return {"success": False, "error": "AlgoNode timed out (>10s)"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

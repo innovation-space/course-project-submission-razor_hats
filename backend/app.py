@@ -581,6 +581,58 @@ def algo_transaction_ledger():
     return jsonify(data), (200 if data.get("success") else 503)
 
 
+@app.route("/api/algo/verify-onchain/<model_id>", methods=["GET"])
+def algo_verify_onchain(model_id):
+    """Read the smart contract global state and compare hash with local DB."""
+    from contract import load_app_id, read_contract_state
+
+    app_id = load_app_id()
+    if not app_id:
+        return jsonify({"success": False, "error": "Smart contract not deployed yet"}), 503
+
+    # Get the locally stored hash
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found in local registry"}), 404
+
+    local_hash = model.get("modelHash", "")
+
+    # Read from smart contract
+    result = read_contract_state(app_id, model_id)
+    if not result.get("success"):
+        return jsonify(result), 503
+
+    if not result.get("found"):
+        return jsonify({
+            "success": True,
+            "verified": False,
+            "reason": "not_found",
+            "message": "Model ID not found in smart contract. It may not have been registered on-chain.",
+            "model_id": model_id,
+            "app_id": app_id,
+        }), 200
+
+    on_chain_hash = result.get("on_chain_hash", "")
+    match = (on_chain_hash == local_hash)
+
+    return jsonify({
+        "success": True,
+        "verified": match,
+        "reason": "match" if match else "mismatch",
+        "model_id": model_id,
+        "model_name": model.get("modelName", ""),
+        "local_hash": local_hash,
+        "on_chain_hash": on_chain_hash,
+        "app_id": app_id,
+        "explorer_url": f"https://lora.algokit.io/testnet/application/{app_id}",
+        "message": (
+            "ON-CHAIN VERIFIED: The hash stored in the Algorand smart contract matches the local registry."
+            if match else
+            "MISMATCH DETECTED: The on-chain hash does NOT match the local registry. Possible tampering!"
+        ),
+    }), 200
+
+
 @app.route("/api/stats/activity", methods=["GET"])
 def get_activity():
     """
