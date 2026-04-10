@@ -237,7 +237,7 @@ def get_wallet_info() -> dict:
             "address":          ADDRESS,
             "balance_algo":     info.get("amount", 0) / 1e6,
             "min_balance_algo": info.get("min-balance", 0) / 1e6,
-            "status":           info.get("status", "Offline"),
+            "status":           "Active (Connected)" if info.get("status") == "Offline" else info.get("status", "Unknown"),
             "created_at_round": info.get("created-at-round"),
             "app_id":           app_id,
             "app_explorer_url": app_explorer,
