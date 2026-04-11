@@ -1029,6 +1029,78 @@
       </div>
     `;
     proofTab.appendChild(merkleCard);
+
+    // ── Bitcoin L1 Settlement Card ───────────────────────────────────
+    const btcCard = document.createElement('div');
+    btcCard.className = 'card';
+    btcCard.style.marginTop = '1.2rem';
+    btcCard.style.borderColor = 'rgba(247,147,26,.35)';
+    btcCard.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.8rem;">
+        <div>
+          <h2 style="margin:0;color:#f7931a;">₿ Bitcoin L1 Settlement</h2>
+          <p class="subtitle" style="margin-top:.3rem;">
+            Anchor the Algorand Merkle Root to <strong>Bitcoin Testnet</strong> via an
+            <code style="font-size:.75rem;color:#f7931a;">OP_RETURN</code> transaction — the same mechanism
+            used by Lightning Network and Rollups for L1 finality.
+          </p>
+        </div>
+        <div id="btcWalletBadge" style="font-size:.75rem;background:rgba(247,147,26,.1);border:1px solid rgba(247,147,26,.35);border-radius:8px;padding:.4rem .8rem;color:#f7931a;">
+          🟡 Loading wallet…
+        </div>
+      </div>
+
+      <!-- Architecture explanation -->
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.5rem;align-items:center;margin-bottom:1rem;font-size:.78rem;text-align:center;">
+        <div style="background:rgba(108,92,231,.12);border:1px solid rgba(108,92,231,.3);border-radius:8px;padding:.6rem;">
+          <div style="font-size:1rem;">⚡</div>
+          <div style="font-weight:700;color:var(--primary);">Algorand Testnet</div>
+          <div style="color:var(--text-muted);">Fast sidechain<br>Individual model hashes</div>
+        </div>
+        <div style="font-size:1.4rem;color:var(--text-muted);">→</div>
+        <div style="background:rgba(247,147,26,.08);border:1px solid rgba(247,147,26,.35);border-radius:8px;padding:.6rem;">
+          <div style="font-size:1rem;">₿</div>
+          <div style="font-weight:700;color:#f7931a;">Bitcoin Testnet3</div>
+          <div style="color:var(--text-muted);">L1 settlement layer<br>Merkle Root batch anchor</div>
+        </div>
+      </div>
+
+      <!-- Action button -->
+      <button id="btcAnchorBtn" onclick="anchorToBitcoin()"
+        style="background:linear-gradient(135deg,#f7931a,#e8820c);color:#000;border:none;border-radius:8px;padding:.65rem 1.4rem;font-weight:700;font-size:.88rem;cursor:pointer;transition:opacity .2s;margin-bottom:1rem;"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        ₿ Anchor Merkle Root → Bitcoin Testnet
+      </button>
+
+      <!-- OP_RETURN hex breakdown (hidden until anchored) -->
+      <div id="btcOpReturnPanel" style="display:none;margin-bottom:1rem;">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.08em;margin-bottom:.4rem;">
+          OP_RETURN Script Breakdown
+        </div>
+        <div id="btcOpReturnBreakdown" style="font-family:var(--mono);font-size:.75rem;background:#0a0a0a;border:1px solid rgba(247,147,26,.3);border-radius:8px;padding:.8rem;"></div>
+      </div>
+
+      <!-- Result panel -->
+      <div id="btcAnchorResult"></div>
+    `;
+    proofTab.appendChild(btcCard);
+
+    // Load BTC wallet info on tab switch
+    setTimeout(() => {
+      fetch(`${API}/bitcoin/wallet`, { credentials: 'include' })
+        .then(r => r.json()).then(d => {
+          const badge = document.getElementById('btcWalletBadge');
+          if (!badge) return;
+          if (d.success) {
+            badge.innerHTML = `🟢 BTC Wallet: <strong>${d.btc.toFixed(6)} tBTC</strong> &nbsp;<a href="${d.explorer}" target="_blank" style="color:#f7931a;font-size:.7rem;">View ↗</a>`;
+          } else {
+            badge.innerHTML = `🔴 Wallet error: ${d.error}`;
+          }
+        }).catch(() => {
+          const badge = document.getElementById('btcWalletBadge');
+          if (badge) badge.innerHTML = '🔴 Wallet offline';
+        });
+    }, 800);
   })();
   </script>
 
@@ -3797,6 +3869,94 @@ async function loadAlgoMerkle() {
   } catch(e) {
     infoEl.textContent = 'Network error: ' + e.message;
     svgEl.innerHTML = '';
+  }
+}
+
+// ── Bitcoin L1 Anchoring ────────────────────────────────────────────────────
+async function anchorToBitcoin() {
+  const btn      = document.getElementById('btcAnchorBtn');
+  const resultEl = document.getElementById('btcAnchorResult');
+  const opPanel  = document.getElementById('btcOpReturnPanel');
+  const opBreak  = document.getElementById('btcOpReturnBreakdown');
+  if (!btn || !resultEl) return;
+
+  // Disable button + show loading state
+  btn.disabled = true;
+  btn.textContent = '⛏ Broadcasting to Bitcoin Testnet…';
+  btn.style.opacity = '0.7';
+  resultEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:.6rem;font-size:.84rem;color:#f7931a;margin-top:.5rem;">
+      <span style="display:inline-block;width:14px;height:14px;border:2px solid #f7931a;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></span>
+      Constructing OP_RETURN transaction &amp; broadcasting to Bitcoin Testnet3…
+    </div>`;
+
+  try {
+    const res = await apiFetch(`${API}/bitcoin/anchor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const d = await res.json();
+
+    if (!d.success) {
+      resultEl.innerHTML = `<div style="color:var(--danger);font-size:.84rem;margin-top:.5rem;">❌ ${d.error}</div>`;
+      return;
+    }
+
+    // Show OP_RETURN hex breakdown
+    if (d.annotations && opPanel && opBreak) {
+      opPanel.style.display = 'block';
+      opBreak.innerHTML = d.annotations.map(a => `
+        <div style="display:grid;grid-template-columns:auto auto 1fr;gap:.6rem;align-items:start;padding:.25rem 0;border-bottom:1px solid rgba(255,255,255,.04);">
+          <code style="color:#f7931a;white-space:nowrap;">${a.bytes.length > 16 ? a.bytes.slice(0,16)+'…' : a.bytes}</code>
+          <span style="background:rgba(247,147,26,.15);color:#f7931a;border-radius:4px;padding:0 .4rem;font-size:.7rem;white-space:nowrap;">${a.label}</span>
+          <span style="color:var(--text-muted);">${a.description}</span>
+        </div>`).join('');
+    }
+
+    // Success card
+    resultEl.innerHTML = `
+      <div style="background:rgba(247,147,26,.08);border:1px solid rgba(247,147,26,.4);border-radius:10px;padding:1rem;margin-top:.5rem;">
+        <div style="font-size:1rem;font-weight:700;color:#f7931a;margin-bottom:.7rem;">✅ Anchored to Bitcoin Testnet3!</div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:.4rem;">
+          <strong style="color:var(--text);">Merkle Root anchored</strong> — ${d.model_count} model${d.model_count !== 1 ? 's' : ''} from Algorand
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);word-break:break-all;margin-bottom:.4rem;">
+          <strong style="color:var(--text);">Merkle Root:</strong>
+          <code style="font-size:.72rem;color:#f7931a;">${d.merkle_root}</code>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);word-break:break-all;margin-bottom:.4rem;">
+          <strong style="color:var(--text);">Bitcoin TxID:</strong>
+          <code style="font-size:.72rem;">${d.txid}</code>
+        </div>
+        <div style="margin-top:.8rem;display:flex;gap:.6rem;flex-wrap:wrap;">
+          <a href="${d.explorer_url}" target="_blank"
+            style="display:inline-flex;align-items:center;gap:.4rem;background:#f7931a;color:#000;font-weight:700;font-size:.8rem;padding:.45rem 1rem;border-radius:7px;text-decoration:none;">
+            ₿ View on Blockstream ↗
+          </a>
+          <div style="font-size:.72rem;color:var(--text-muted);align-self:center;">Fee: ${d.fee_satoshi} sat · Network: ${d.network}</div>
+        </div>
+      </div>`;
+
+    toast('ok', '₿ Merkle Root anchored to Bitcoin Testnet!');
+
+    // Refresh wallet balance
+    fetch(`${API}/bitcoin/wallet`, { credentials: 'include' })
+      .then(r => r.json()).then(d2 => {
+        const badge = document.getElementById('btcWalletBadge');
+        if (badge && d2.success) {
+          badge.innerHTML = `🟢 BTC Wallet: <strong>${d2.btc.toFixed(6)} tBTC</strong> &nbsp;<a href="${d2.explorer}" target="_blank" style="color:#f7931a;font-size:.7rem;">View ↗</a>`;
+        }
+      }).catch(() => {});
+
+  } catch(e) {
+    if (e.message !== 'Session expired. Please log in again.') {
+      resultEl.innerHTML = `<div style="color:var(--danger);font-size:.84rem;margin-top:.5rem;">❌ Network error: ${e.message}</div>`;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '₿ Anchor Merkle Root → Bitcoin Testnet';
+    btn.style.opacity = '1';
   }
 }
 
