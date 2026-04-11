@@ -18,6 +18,7 @@ from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from auth import auth_bp, require_auth
 import algorand_client
+import bitcoin_client
 from time import time
 import hashlib
 
@@ -1230,6 +1231,65 @@ def set_model_privacy(model_id):
         "message": f"Model is now {status}",
     }), 200
 
+# ------------------------------------------------------------------ #
+#  Bitcoin L1 Anchoring (OP_RETURN settlement layer)                   #
+#  Branch: future-bitcoin-integration                                  #
+# ------------------------------------------------------------------ #
+
+@app.route("/api/bitcoin/wallet", methods=["GET"])
+def bitcoin_wallet_info():
+    """Return the Bitcoin Testnet wallet balance and address."""
+    data = bitcoin_client.get_wallet_balance()
+    return jsonify(data), (200 if data.get("success") else 503)
+
+
+@app.route("/api/bitcoin/anchor", methods=["POST"])
+@require_auth
+def bitcoin_anchor():
+    """
+    Anchor the current Merkle Root of all registered models to Bitcoin Testnet
+    via an OP_RETURN transaction.  This demonstrates the 'Rollup' architecture:
+      - Algorand  = fast sidechain (individual model hashes)
+      - Bitcoin   = L1 settlement  (Merkle Root batch anchor)
+    """
+    try:
+        body        = request.get_json() or {}
+        merkle_root = body.get("merkleRoot", "").strip()
+
+        if not merkle_root or len(merkle_root) < 64:
+            # Fall back to computing live from registry
+            if not models_registry:
+                return jsonify({"success": False, "error": "No models registered yet. Register a model first."}), 400
+
+            # Build Merkle Root from all registered hashes
+            leaves = sorted(m["modelHash"] for m in models_registry.values())
+            current = [hashlib.sha256(h.encode()).digest() for h in leaves]
+            while len(current) > 1:
+                if len(current) % 2 != 0:
+                    current.append(current[-1])  # duplicate last leaf
+                current = [
+                    hashlib.sha256(current[i] + current[i+1]).digest()
+                    for i in range(0, len(current), 2)
+                ]
+            merkle_root = current[0].hex()
+
+        # Get annotated OP_RETURN script for educational display
+        op_hex       = bitcoin_client.build_op_return_script_hex(merkle_root)
+        annotations  = bitcoin_client.decode_op_return_annotated(op_hex)
+
+        # Broadcast to Bitcoin Testnet
+        result = bitcoin_client.anchor_merkle_root(merkle_root)
+        result["merkle_root"]  = merkle_root
+        result["op_return_hex"] = op_hex
+        result["annotations"]  = annotations
+        result["model_count"]  = len(models_registry)
+
+        return jsonify(result), (200 if result.get("success") else 500)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 
 # ------------------------------------------------------------------ #
 #  Server start                                                        #
@@ -1237,10 +1297,11 @@ def set_model_privacy(model_id):
 
 if __name__ == "__main__":
     print("══════════════════════════════════════════════")
-    print("  🔗 BlockVerify — Algorand Backbone")
+    print("  🔗 BlockVerify — Algorand + Bitcoin L1")
     print("  (Professor Edition - Live Testnet)")
     print("══════════════════════════════════════════════")
     print("  Ledger      : Algorand Testnet (AlgoNode)")
+    print("  Settlement  : Bitcoin Testnet3 (OP_RETURN)")
     print("  Server      : http://localhost:5000")
     print("══════════════════════════════════════════════")
     port = int(os.environ.get("PORT", 5000))
