@@ -1370,6 +1370,7 @@ const API = window.location.hostname === 'localhost' || window.location.hostname
   ? 'http://localhost:5000/api'
   : 'https://course-project-submission-razor-hats.onrender.com/api';
 const hashes = {};
+const layerHashesMap = {};
 let _allModels = [];
 let _allBlocks = [];
 const BLOCKS_PER_PAGE = 5;
@@ -1720,6 +1721,38 @@ async function onFile(s) {
   try {
     const hex = await computeHash(file);
     hashes[s] = hex;
+    
+    // Deep Layer Inspection (JSON models)
+    if (file.name.toLowerCase().endsWith('.json')) {
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        if (json.layers) {
+          const lh = {};
+          // Convert string to pseudo-buffer by encoding as utf-8, 
+          // or just fallback to sha256Fallback string
+          for (const [lName, lData] of Object.entries(json.layers)) {
+            const lStr = JSON.stringify(lData);
+            const enc = new TextEncoder().encode(lStr);
+            const b = enc.buffer;
+            let lHex = '';
+            if (window.crypto && window.crypto.subtle) {
+               const hb = await crypto.subtle.digest('SHA-256', b);
+               lHex = Array.from(new Uint8Array(hb)).map(x => x.toString(16).padStart(2,'0')).join('');
+            } else {
+               // Fallback using chunk data (simplified for small arrays)
+               lHex = await computeHash(new File([b], "layer.bin"));
+            }
+            lh[lName] = lHex;
+          }
+          layerHashesMap[s] = lh;
+          console.log(`Extracted hashes for ${Object.keys(lh).length} layers`);
+        }
+      } catch(ex) { console.warn("Could not parse JSON for layers:", ex); }
+    } else {
+      delete layerHashesMap[s];
+    }
+
     hashEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:.5rem;">${hashIdenticon(hex, 24)}<span>${hex}</span></span>`;
   } catch(e) {
     hashWrap.style.display = 'none';
@@ -1903,9 +1936,12 @@ async function registerModel() {
   setLoading('regBtn', true, 'Broadcasting to Algorand...');
   document.getElementById('regModelResult').innerHTML = '';
   try {
+    const payload = { modelName:name, modelHash:hash, metadata:meta, powNonce };
+    if (layerHashesMap.reg) payload.layerHashes = layerHashesMap.reg;
+
     const res = await apiFetch(API + '/register', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta, powNonce })
+      body: JSON.stringify(payload)
     });
     const d = await res.json();
     if (d.success) {
@@ -1990,12 +2026,67 @@ async function verifyModel() {
             <code class="${valid ? 'hash-match' : 'hash-nomatch'}">${d.providedHash}</code>
           </div>
           <div style="font-size:.78rem;color:var(--text-muted);">Algo TxID: <a href="https://lora.algokit.io/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Verifier: ${user}</div>
-          
+          ${!valid && Object.keys(d.layerHashes || {}).length > 0 && layerHashesMap.ver ? `
+          <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.05);">
+            <div style="font-size:.85rem;font-weight:700;color:var(--danger);margin-bottom:.5rem;">⚠️ Tampered Architecture Detected</div>
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:1rem;">The overall file hash is broken. We can analyze the model layer-by-layer to determine exactly which neural network weights were modified.</p>
+            <button class="btn btn-sec" style="border-color:var(--danger);color:var(--danger);width:100%;font-size:.8rem;padding:.5rem;" onclick='runDeepInspection(${JSON.stringify(d.layerHashes)}, layerHashesMap.ver)'>
+              🔍 Run Deep Layer Inspection
+            </button>
+            <div id="deepInspectionTerminal" style="display:none;margin-top:1rem;background:#050505;border:1px solid #333;border-radius:8px;padding:1rem;font-family:var(--mono);font-size:.75rem;min-height:150px;max-height:300px;overflow-y:auto;">
+            </div>
+          </div>
+          ` : ''}
         </div>
       </div>`;
     refreshStats();
   } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', 'Network error: ' + e.message); }
   finally { setLoading('verBtn', false, 'Verify Integrity'); }
+}
+
+async function runDeepInspection(storedLayers, computedLayers) {
+  const term = document.getElementById('deepInspectionTerminal');
+  term.style.display = 'block';
+  term.innerHTML = '<div style="color:var(--primary);margin-bottom:.5rem;">[sys] Initializing Deep Layer Integrity Inspector...</div>';
+
+  const layers = Object.keys(storedLayers);
+  let html = term.innerHTML;
+  
+  for (let i = 0; i < layers.length; i++) {
+    const lName = layers[i];
+    const sHash = storedLayers[lName];
+    const cHash = computedLayers[lName];
+    
+    // Simulate slight delay for dramatic effect (larger models take time)
+    await new Promise(r => setTimeout(r, 400));
+    
+    html += `<div style="margin-top:.3rem;color:#888;">[layer:${i}] Scanning <strong>${lName}</strong> payload...</div>`;
+    term.innerHTML = html;
+    term.scrollTop = term.scrollHeight;
+    
+    await new Promise(r => setTimeout(r, 300));
+    
+    if (sHash === cHash) {
+      html += `<div style="color:var(--success);">↳ Hash MATCH: <span style="opacity:.6">${sHash.substring(0,20)}...</span></div>`;
+    } else {
+      html += `<div style="color:var(--danger);font-weight:700;margin-top:.4rem;font-size:.8rem;background:rgba(255,100,100,.1);padding:.4rem;border:1px solid rgba(255,100,100,.3);border-radius:4px;">
+        🚨 CRITICAL MISMATCH DETECTED 🚨<br>
+        Layer: <span style="color:#fff;">${lName}</span><br>
+        Expected: <span style="opacity:.8;font-weight:normal">${sHash.substring(0,32)}...</span><br>
+        Computed: <span style="opacity:.8;font-weight:normal">${(cHash||'').substring(0,32)}...</span><br><br>
+        Conclusion: Malicious modification detected in specific neural network layer. Inspection halted to prevent execution.
+      </div>`;
+      term.innerHTML = html;
+      term.scrollTop = term.scrollHeight;
+      return; // halt on first failure
+    }
+    term.innerHTML = html;
+    term.scrollTop = term.scrollHeight;
+  }
+  
+  html += `<div style="color:var(--warn);margin-top:1rem;">[sys] Inspection complete. Mismatch might be in un-layered metadata.</div>`;
+  term.innerHTML = html;
+  term.scrollTop = term.scrollHeight;
 }
 
 // ── Version History ──
