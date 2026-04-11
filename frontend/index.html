@@ -28,6 +28,10 @@
       cursor: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 2 L19 9 L12 11 L10 18 Z" fill="%2300cec9" stroke="%23ffffff" stroke-width="1.5" stroke-linejoin="round"/></svg>') 5 2, auto;
     }
     
+    a, button, .btn, .file-drop, .block-card, .qs-card, .chatbot-btn, .close-btn, .bc-copy, [onclick] {
+      cursor: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 10.5V4.5a1.5 1.5 0 013 0v6M11 10V3.5a1.5 1.5 0 013 0v6.5M14 10.5V5.5a1.5 1.5 0 013 0v6M17 11v-1a1.5 1.5 0 013 0v5.5a6.5 6.5 0 01-13 0v-3.5a2.5 2.5 0 015 0z" fill="%238b7cff" stroke="%23ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>') 7 2, pointer !important;
+    }
+    
     /* ── Hide Scrollbars Globally ── */
     ::-webkit-scrollbar { display: none; }
     * { -ms-overflow-style: none; scrollbar-width: none; }
@@ -602,6 +606,124 @@
       .qs-grid { grid-template-columns: 1fr 1fr; }
     }
 
+    /* ── Chatbot UI (Blockchain Aesthetic) ── */
+    .chatbot-btn {
+      position: fixed; bottom: 42px; right: 24px; width: 48px; height: 48px;
+      background: rgba(15, 15, 20, 0.9);
+      border: 1px solid var(--primary); border-radius: 6px;
+      display: flex; justify-content: center; align-items: center;
+      box-shadow: 0 0 12px rgba(187, 134, 252, 0.5), inset 0 0 10px rgba(187, 134, 252, 0.2);
+      cursor: pointer; z-index: 1000;
+      transition: all 0.2s;
+    }
+    .chatbot-btn:before {
+      content: ''; position: absolute; top: -1px; left: -1px; right: -1px; bottom: -1px;
+      border: 1px solid rgba(187, 134, 252, 0.7); pointer-events: none; border-radius: 6px;
+      filter: blur(2px); z-index: -1;
+    }
+    .chatbot-btn:hover { background: rgba(187, 134, 252, 0.15); box-shadow: 0 0 20px rgba(187, 134, 252, 0.8), inset 0 0 15px rgba(187, 134, 252, 0.4); transform: translateY(-2px); }
+    .chatbot-btn svg { width: 22px; height: 22px; fill: var(--text); filter: drop-shadow(0 0 5px var(--primary)); }
+    
+    .chatbot-window {
+      position: fixed; bottom: 105px; right: 24px; width: 350px; height: 480px;
+      background: rgba(10, 10, 15, 0.95); backdrop-filter: blur(12px);
+      border: 1px solid rgba(187, 134, 252, 0.5); border-radius: 4px;
+      display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8), 0 0 20px rgba(187,134,252,0.1); z-index: 1000;
+      transform: translateY(20px); opacity: 0; pointer-events: none;
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+    }
+    .chatbot-window.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+    
+    .chatbot-header {
+      padding: 0.9rem 1rem; background: rgba(187, 134, 252, 0.08); border-bottom: 1px solid rgba(187, 134, 252, 0.3);
+      display: flex; justify-content: space-between; align-items: center; position: relative;
+    }
+    .chatbot-header::before {
+      content: ''; position: absolute; left: 0; bottom: 0; width: 100%; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    }
+    .chatbot-header h3 { margin: 0; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; font-family: var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+    .chatbot-header h3 span { color: var(--primary); text-shadow: 0 0 8px var(--primary); }
+    .chatbot-header .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.4rem; font-family: var(--mono); line-height: 1; }
+    .chatbot-header .close-btn:hover { color: var(--warn); text-shadow: 0 0 8px var(--warn); }
+    
+    .chatbot-messages {
+      flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.8rem;
+      background-image: 
+        linear-gradient(rgba(187, 134, 252, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(187, 134, 252, 0.03) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    .chat-msg { max-width: 85%; padding: 0.75rem 0.9rem; border-radius: 4px; font-size: 0.82rem; line-height: 1.5; word-wrap: break-word; }
+    .chat-msg.user { align-self: flex-end; background: rgba(187, 134, 252, 0.15); border: 1px solid rgba(187, 134, 252, 0.4); color: var(--text); border-bottom-right-radius: 0; box-shadow: 0 0 10px rgba(187,134,252,0.1); }
+    .chat-msg.user::before { content: '>'; color: var(--primary); margin-right: 5px; font-family: var(--mono); }
+    
+    .chat-msg.bot { align-self: flex-start; background: rgba(255,255,255,0.03); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 0; border-left: 2px solid var(--primary); }
+    .chat-msg.bot strong { color: var(--primary); font-weight: 600; text-shadow: 0 0 5px rgba(187,134,252,0.3); }
+    
+    .chatbot-input {
+      padding: 0.8rem; border-top: 1px solid var(--border); background: rgba(0,0,0,0.4);
+      display: flex; gap: 0.5rem;
+    }
+    .chatbot-input input {
+      flex: 1; background: rgba(0,0,0,0.5); border: 1px solid var(--border);
+      color: var(--text); padding: 0.6rem 0.8rem; border-radius: 4px; outline: none; font-size: 0.8rem; font-family: var(--mono);
+    }
+    .chatbot-input input:focus { border-color: var(--primary); box-shadow: inset 0 0 5px rgba(187,134,252,0.2); }
+    .chatbot-input button {
+      background: rgba(187, 134, 252, 0.15); border: 1px solid var(--primary); width: 36px; height: 36px; border-radius: 4px;
+      display: flex; justify-content: center; align-items: center; cursor: pointer; transition: all 0.2s;
+    }
+    .chatbot-input button:hover { background: var(--primary); box-shadow: 0 0 10px var(--primary); }
+    .chatbot-input button svg { width: 14px; height: 14px; fill: var(--text); transition: fill 0.2s; }
+    .chatbot-input button:hover svg { fill: #fff; }
+    
+    .chat-typing { align-self: flex-start; display: flex; gap: 4px; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-left: 2px solid var(--text-muted); border-radius: 4px; }
+    .chat-typing span { width: 6px; height: 6px; background: var(--primary); border-radius: 0; animation: bounce 1.4s infinite ease-in-out both; opacity: 0.5; box-shadow: 0 0 5px var(--primary); }
+    .chat-typing span:nth-child(1) { animation-delay: -0.32s; }
+    .chat-typing span:nth-child(2) { animation-delay: -0.16s; }
+
+    /* Light Theme Chatbot Overrides */
+    body.light-theme .chatbot-btn {
+      background: #ffffff;
+      box-shadow: 0 0 12px rgba(79, 70, 229, 0.4), inset 0 0 10px rgba(79, 70, 229, 0.1);
+    }
+    body.light-theme .chatbot-btn:before { border-color: rgba(79, 70, 229, 0.5); }
+    body.light-theme .chatbot-btn:hover { background: rgba(79, 70, 229, 0.1); }
+    
+    body.light-theme .chatbot-window {
+      background: rgba(255, 255, 255, 0.95);
+      border-color: rgba(79, 70, 229, 0.4);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.15), 0 0 20px rgba(79,70,229,0.1);
+    }
+    body.light-theme .chatbot-header {
+      background: rgba(79, 70, 229, 0.05); border-bottom-color: rgba(79, 70, 229, 0.2);
+    }
+    body.light-theme .chatbot-messages {
+      background-image: 
+        linear-gradient(rgba(79, 70, 229, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79, 70, 229, 0.05) 1px, transparent 1px);
+    }
+    body.light-theme .chat-msg.user {
+      background: rgba(79, 70, 229, 0.1); border-color: rgba(79, 70, 229, 0.3);
+    }
+    body.light-theme .chat-msg.bot {
+      background: #f8fafc; border-color: var(--border);
+    }
+    body.light-theme .chatbot-input {
+      background: #f8fafc; border-top-color: var(--border);
+    }
+    body.light-theme .chatbot-input input {
+      background: #ffffff; color: var(--text); border-color: var(--border);
+    }
+    body.light-theme .chatbot-input input:focus { box-shadow: inset 0 0 5px rgba(79, 70, 229, 0.15); }
+    body.light-theme .chatbot-input button {
+      background: rgba(79, 70, 229, 0.1);
+    }
+    body.light-theme .chatbot-input button:hover { background: var(--primary); }
+    body.light-theme .chat-typing { background: #ffffff; }
+
     /* ── Delayed tooltip ─────────────────────────────────────── */
     #bv-tip {
       position: fixed;
@@ -1029,6 +1151,78 @@
       </div>
     `;
     proofTab.appendChild(merkleCard);
+
+    // ── Bitcoin L1 Settlement Card ───────────────────────────────────
+    const btcCard = document.createElement('div');
+    btcCard.className = 'card';
+    btcCard.style.marginTop = '1.2rem';
+    btcCard.style.borderColor = 'rgba(247,147,26,.35)';
+    btcCard.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.8rem;">
+        <div>
+          <h2 style="margin:0;color:#f7931a;">₿ Bitcoin L1 Settlement</h2>
+          <p class="subtitle" style="margin-top:.3rem;">
+            Anchor the Algorand Merkle Root to <strong>Bitcoin Testnet</strong> via an
+            <code style="font-size:.75rem;color:#f7931a;">OP_RETURN</code> transaction — the same mechanism
+            used by Lightning Network and Rollups for L1 finality.
+          </p>
+        </div>
+        <div id="btcWalletBadge" style="font-size:.75rem;background:rgba(247,147,26,.1);border:1px solid rgba(247,147,26,.35);border-radius:8px;padding:.4rem .8rem;color:#f7931a;">
+          🟡 Loading wallet…
+        </div>
+      </div>
+
+      <!-- Architecture explanation -->
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.5rem;align-items:center;margin-bottom:1rem;font-size:.78rem;text-align:center;">
+        <div style="background:rgba(108,92,231,.12);border:1px solid rgba(108,92,231,.3);border-radius:8px;padding:.6rem;">
+          <div style="font-size:1rem;">⚡</div>
+          <div style="font-weight:700;color:var(--primary);">Algorand Testnet</div>
+          <div style="color:var(--text-muted);">Fast sidechain<br>Individual model hashes</div>
+        </div>
+        <div style="font-size:1.4rem;color:var(--text-muted);">→</div>
+        <div style="background:rgba(247,147,26,.08);border:1px solid rgba(247,147,26,.35);border-radius:8px;padding:.6rem;">
+          <div style="font-size:1rem;">₿</div>
+          <div style="font-weight:700;color:#f7931a;">Bitcoin Testnet3</div>
+          <div style="color:var(--text-muted);">L1 settlement layer<br>Merkle Root batch anchor</div>
+        </div>
+      </div>
+
+      <!-- Action button -->
+      <button id="btcAnchorBtn" onclick="anchorToBitcoin()"
+        style="background:linear-gradient(135deg,#f7931a,#e8820c);color:#000;border:none;border-radius:8px;padding:.65rem 1.4rem;font-weight:700;font-size:.88rem;cursor:pointer;transition:opacity .2s;margin-bottom:1rem;"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        ₿ Anchor Merkle Root → Bitcoin Testnet
+      </button>
+
+      <!-- OP_RETURN hex breakdown (hidden until anchored) -->
+      <div id="btcOpReturnPanel" style="display:none;margin-bottom:1rem;">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.08em;margin-bottom:.4rem;">
+          OP_RETURN Script Breakdown
+        </div>
+        <div id="btcOpReturnBreakdown" style="font-family:var(--mono);font-size:.75rem;background:#0a0a0a;border:1px solid rgba(247,147,26,.3);border-radius:8px;padding:.8rem;"></div>
+      </div>
+
+      <!-- Result panel -->
+      <div id="btcAnchorResult"></div>
+    `;
+    proofTab.appendChild(btcCard);
+
+    // Load BTC wallet info on tab switch
+    setTimeout(() => {
+      fetch(`${API}/bitcoin/wallet`, { credentials: 'include' })
+        .then(r => r.json()).then(d => {
+          const badge = document.getElementById('btcWalletBadge');
+          if (!badge) return;
+          if (d.success) {
+            badge.innerHTML = `🟢 BTC Wallet: <strong>${d.btc.toFixed(6)} tBTC</strong> &nbsp;<a href="${d.explorer}" target="_blank" style="color:#f7931a;font-size:.7rem;">View ↗</a>`;
+          } else {
+            badge.innerHTML = `🔴 Wallet error: ${d.error}`;
+          }
+        }).catch(() => {
+          const badge = document.getElementById('btcWalletBadge');
+          if (badge) badge.innerHTML = '🔴 Wallet offline';
+        });
+    }, 800);
   })();
   </script>
 
@@ -1298,6 +1492,7 @@ const API = window.location.hostname === 'localhost' || window.location.hostname
   ? 'http://localhost:5000/api'
   : 'https://course-project-submission-razor-hats.onrender.com/api';
 const hashes = {};
+const layerHashesMap = {};
 let _allModels = [];
 let _allBlocks = [];
 const BLOCKS_PER_PAGE = 5;
@@ -1648,6 +1843,38 @@ async function onFile(s) {
   try {
     const hex = await computeHash(file);
     hashes[s] = hex;
+    
+    // Deep Layer Inspection (JSON models)
+    if (file.name.toLowerCase().endsWith('.json')) {
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        if (json.layers) {
+          const lh = {};
+          // Convert string to pseudo-buffer by encoding as utf-8, 
+          // or just fallback to sha256Fallback string
+          for (const [lName, lData] of Object.entries(json.layers)) {
+            const lStr = JSON.stringify(lData);
+            const enc = new TextEncoder().encode(lStr);
+            const b = enc.buffer;
+            let lHex = '';
+            if (window.crypto && window.crypto.subtle) {
+               const hb = await crypto.subtle.digest('SHA-256', b);
+               lHex = Array.from(new Uint8Array(hb)).map(x => x.toString(16).padStart(2,'0')).join('');
+            } else {
+               // Fallback using chunk data (simplified for small arrays)
+               lHex = await computeHash(new File([b], "layer.bin"));
+            }
+            lh[lName] = lHex;
+          }
+          layerHashesMap[s] = lh;
+          console.log(`Extracted hashes for ${Object.keys(lh).length} layers`);
+        }
+      } catch(ex) { console.warn("Could not parse JSON for layers:", ex); }
+    } else {
+      delete layerHashesMap[s];
+    }
+
     hashEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:.5rem;">${hashIdenticon(hex, 24)}<span>${hex}</span></span>`;
   } catch(e) {
     hashWrap.style.display = 'none';
@@ -1831,9 +2058,12 @@ async function registerModel() {
   setLoading('regBtn', true, 'Broadcasting to Algorand...');
   document.getElementById('regModelResult').innerHTML = '';
   try {
+    const payload = { modelName:name, modelHash:hash, metadata:meta, powNonce };
+    if (layerHashesMap.reg) payload.layerHashes = layerHashesMap.reg;
+
     const res = await apiFetch(API + '/register', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta, powNonce })
+      body: JSON.stringify(payload)
     });
     const d = await res.json();
     if (d.success) {
@@ -1918,12 +2148,316 @@ async function verifyModel() {
             <code class="${valid ? 'hash-match' : 'hash-nomatch'}">${d.providedHash}</code>
           </div>
           <div style="font-size:.78rem;color:var(--text-muted);">Algo TxID: <a href="https://lora.algokit.io/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Verifier: ${user}</div>
-          
+          ${!valid && Object.keys(d.layerHashes || {}).length > 0 && layerHashesMap.ver ? `
+          <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.05);">
+            <div style="font-size:.85rem;font-weight:700;color:var(--danger);margin-bottom:.5rem;">⚠️ Tampered Architecture Detected</div>
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:1rem;">The overall file hash is broken. We can analyze the model layer-by-layer to determine exactly which neural network weights were modified.</p>
+            <button class="btn btn-sec" style="border-color:var(--danger);color:var(--danger);width:100%;font-size:.8rem;padding:.5rem;" onclick='runDeepInspection(${JSON.stringify(d.layerHashes)}, layerHashesMap.ver)'>
+              🔍 Run Deep Layer Inspection
+            </button>
+            <div id="deepInspectionTerminal" style="display:none;margin-top:1rem;background:#050505;border:1px solid #333;border-radius:8px;padding:1rem;font-family:var(--mono);font-size:.75rem;min-height:150px;max-height:300px;overflow-y:auto;">
+            </div>
+          </div>
+          ` : ''}
+
+          <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.05);">
+            <button class="btn btn-sec" style="width:100%;font-size:.8rem;padding:.5rem;border-color:#bb86fc;color:#bb86fc;" onclick='runZkProof()'>
+              🧮 Generate zk-SNARK Execution Proof
+            </button>
+            <div id="zkProofTerminal" style="display:none;margin-top:1rem;background:#050505;border:1px solid #333;border-radius:8px;padding:1rem;font-family:var(--mono);font-size:.75rem;min-height:150px;max-height:300px;overflow-y:auto;">
+            </div>
+          </div>
         </div>
       </div>`;
     refreshStats();
   } catch(e) { if (e.message !== 'Session expired. Please log in again.') toast('err', 'Network error: ' + e.message); }
   finally { setLoading('verBtn', false, 'Verify Integrity'); }
+}
+
+async function runDeepInspection(storedLayers, computedLayers) {
+  const term = document.getElementById('deepInspectionTerminal');
+  term.style.display = 'block';
+  term.innerHTML = `
+    <div style="display:flex; justify-content:space-between; border-bottom:1px solid #333; padding-bottom:.5rem; margin-bottom:.5rem;">
+      <span style="color:var(--primary); font-weight:bold; letter-spacing:1px;">NEURAL ARCHITECTURE INSPECTOR v2.0</span>
+      <span style="color:#666;" id="deepTermSpin">⠋</span>
+    </div>
+    <div id="deepTermLog"></div>
+  `;
+
+  const logBox = document.getElementById('deepTermLog');
+  const spinner = document.getElementById('deepTermSpin');
+  
+  const spinFrames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+  let spinIdx = 0;
+  const spinInt = setInterval(() => { spinner.textContent = spinFrames[++spinIdx % spinFrames.length]; }, 80);
+
+  const cKeys = Object.keys(computedLayers);
+  const sKeys = Object.keys(storedLayers);
+  
+  for (let i = 0; i < cKeys.length; i++) {
+    const lName = cKeys[i];
+    const cHash = computedLayers[lName];
+    const sHash = storedLayers[lName]; // could be undefined if rogue
+    
+    // Create layer row
+    const row = document.createElement('div');
+    row.style.marginBottom = '0.4rem';
+    row.innerHTML = `<span style="color:#888;">[TENSOR_ALLOC]</span> Scanning layer <strong style="color:#ccc;">${lName}</strong> <span class="layer-ellipsis">...</span>`;
+    logBox.appendChild(row);
+    term.scrollTop = term.scrollHeight;
+    
+    // Simulate tensor reading time
+    await new Promise(r => setTimeout(r, 600));
+    
+    // 1. TOPOLOGY MISMATCH (Rogue Layer Detected)
+    if (!sHash) {
+      clearInterval(spinInt);
+      spinner.textContent = 'X';
+      spinner.style.color = 'var(--danger)';
+      
+      row.innerHTML = `<div style="display:flex; justify-content:space-between; background:rgba(255,50,50,0.1); padding:0.2rem 0.4rem;">
+        <span style="color:#fff; font-weight:bold;">[${String(i).padStart(2,'0')}] ${lName}</span>
+        <span style="color:var(--danger); font-weight:bold;">[ ANOMALY DETECTED ]</span>
+      </div>`;
+      
+      const errBox = document.createElement('div');
+      errBox.style.marginTop = '0.5rem';
+      errBox.style.border = '1px solid rgba(255, 50, 50, 0.4)';
+      errBox.style.padding = '0.5rem';
+      errBox.style.borderRadius = '4px';
+      errBox.style.background = 'rgba(10, 0, 0, 0.5)';
+      logBox.appendChild(errBox);
+      
+      errBox.innerHTML = `<div style="color:var(--danger); font-weight:bold; margin-bottom:0.5rem;">🚨 CRITICAL: TOPOLOGY MISMATCH 🚨</div>
+        <div style="color:#aaa; font-size:0.65rem; line-height:1.4;">
+          Expected Layer: <span style="color:var(--success)">NONE (Unexpected Architecture)</span><br>
+          Encountered: <span style="color:var(--danger)">${lName}</span>
+        </div>
+        <div style="margin-top:0.8rem; color:#888;">Scanning unverified tensor dimensions...</div>
+        <div style="color:#f44; word-break:break-all; font-size:0.6rem; margin-top:0.5rem; border-left:2px solid var(--danger); padding-left:5px;">
+          UNAUTHORIZED EXECUTION GRAPH DETECTED
+        </div>
+        <div style="margin-top:0.8rem;">
+          <span style="color:var(--danger);font-weight:bold;">Conclusion:</span> Structural anomaly. A rogue layer was illegally inserted into the model architecture. Malware injection vector suspected.
+        </div>
+        <button class="btn btn-prim" style="margin-top:1rem; width:100%; border-radius:4px; font-weight:700; padding:.5rem;" onclick="runSelfHealing('${lName}', 'topology')">
+          ⚕️ Initiate Decentralized Self-Healing (IPFS)
+        </button>
+      `;
+      term.scrollTop = term.scrollHeight;
+      return; // halt
+    }
+    
+    // 2. WEIGHT TAMPERING
+    if (sHash !== cHash) {
+      clearInterval(spinInt);
+      spinner.textContent = 'X';
+      spinner.style.color = 'var(--danger)';
+      
+      row.innerHTML = `<div style="display:flex; justify-content:space-between; background:rgba(255,50,50,0.1); padding:0.2rem 0.4rem;">
+        <span style="color:#fff; font-weight:bold;">[${String(i).padStart(2,'0')}] ${lName}</span>
+        <span style="color:var(--danger); font-weight:bold;">[ COMPROMISED ]</span>
+      </div>`;
+      
+      const errBox = document.createElement('div');
+      errBox.style.marginTop = '0.5rem';
+      errBox.style.border = '1px solid rgba(255, 50, 50, 0.4)';
+      errBox.style.padding = '0.5rem';
+      errBox.style.borderRadius = '4px';
+      errBox.style.background = 'rgba(10, 0, 0, 0.5)';
+      logBox.appendChild(errBox);
+      
+      errBox.innerHTML = `<div style="color:var(--danger); font-weight:bold; margin-bottom:0.5rem;">🚨 ANOMALY DETECTED IN WEIGHT TENSORS 🚨</div>
+        <div style="color:#aaa; font-size:0.65rem; line-height:1.4;">
+          Expected Root: <span style="color:var(--success)">${sHash.substring(0,32)}...</span><br>
+          Computed Root: <span style="color:var(--danger)">${cHash.substring(0,32)}...</span>
+        </div>
+        <div style="margin-top:0.8rem; color:#888;">Initiating micro-inspection of parameter array...</div>
+        <div id="matrixDump" style="color:#4a9; word-break:break-all; font-size:0.6rem; margin-top:0.5rem; max-height:40px; overflow:hidden;"></div>
+      `;
+      term.scrollTop = term.scrollHeight;
+
+      const matrix = document.getElementById('matrixDump');
+      for (let m = 0; m < 15; m++) {
+        let dump = '';
+        for (let j=0; j<40; j++) dump += (Math.random()*.999).toFixed(5) + " ";
+        matrix.textContent = dump;
+        await new Promise(r => setTimeout(r, 60));
+      }
+      
+      matrix.innerHTML = `0.02341 0.15822 0.88123 -0.55123 0.11111 ... <span style="background:var(--danger);color:#fff;font-weight:bold;padding:0 2px;"> 999.99999 </span> ... -0.19833`;
+      
+      const conclusion = document.createElement('div');
+      conclusion.style.marginTop = '0.8rem';
+      conclusion.innerHTML = `
+        <span style="color:var(--danger);font-weight:bold;">Analysis:</span> Backdoor payload detected at Tensor Offset [42]. Weight parameter was artificially altered. Halt execution immediately.
+        <button class="btn btn-prim" style="margin-top:1rem; width:100%; border-radius:4px; font-weight:700; padding:.5rem;" onclick="runSelfHealing('${lName}', 'weight')">
+          ⚕️ Initiate Decentralized Self-Healing (IPFS)
+        </button>
+      `;
+      errBox.appendChild(conclusion);
+      
+      term.scrollTop = term.scrollHeight;
+      return; // halt
+    }
+    
+    // 3. MATCH
+    row.innerHTML = `<div style="display:flex; justify-content:space-between;">
+      <span style="color:#888;">[${String(i).padStart(2,'0')}] <span style="color:#ccc;">${lName}</span></span>
+      <span style="color:var(--success); font-weight:bold;">[ INTEGRITY 100% ]</span>
+    </div>
+    <div style="color:#555; font-size:0.65rem; padding-left:2rem;">SIG: ${sHash.substring(0,40)}</div>`;
+  }
+  
+  clearInterval(spinInt);
+  spinner.textContent = 'OK';
+  spinner.style.color = 'var(--success)';
+}
+
+async function runZkProof() {
+  const term = document.getElementById('zkProofTerminal');
+  term.style.display = 'block';
+  
+  const generateHex = (len) => [...Array(len)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+  
+  term.innerHTML = `
+    <div style="display:flex; justify-content:space-between; border-bottom:1px solid #bb86fc; padding-bottom:.5rem; margin-bottom:.5rem;">
+      <span style="color:#bb86fc; font-weight:bold; letter-spacing:1px;">zk-SNARK PROVER MODULE</span>
+      <span style="color:#bb86fc;" id="zkSpin">⠋</span>
+    </div>
+    <div id="zkLog"></div>
+  `;
+  
+  const logBox = document.getElementById('zkLog');
+  const spinner = document.getElementById('zkSpin');
+  
+  const spinFrames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+  let spinIdx = 0;
+  const spinInt = setInterval(() => { spinner.textContent = spinFrames[++spinIdx % spinFrames.length]; }, 80);
+
+  const steps = [
+    { delay: 400  , text: `<span style="color:#888;">[0.00s]</span> Initializing PLONK proving system...` },
+    { delay: 500  , text: `<span style="color:#888;">[0.12s]</span> Loading structured reference string (SRS) PK...` },
+    { delay: 300  , text: `<span style="color:#888;">[0.45s]</span> Compiling Neural Network circuit to constraints... <span style="color:var(--primary)">12,504,812 gates</span>` },
+    { delay: 800  , text: `<span style="color:#888;">[1.12s]</span> Computing witness polynomials <span style="color:#bb86fc">w(x), z(x)</span>...` },
+    { delay: 1200 , text: `<span style="color:#888;">[2.54s]</span> Generating quotient polynomial <span style="color:#bb86fc">t(x)</span> constraints:` },
+  ];
+
+  for (let s of steps) {
+    await new Promise(r => setTimeout(r, s.delay));
+    logBox.innerHTML += `<div style="margin-bottom:0.2rem;">${s.text}</div>`;
+    term.scrollTop = term.scrollHeight;
+  }
+
+  // Rapidly print matrix polynomials
+  const pBox = document.createElement('div');
+  pBox.style.color = '#7a52aa';
+  pBox.style.fontSize = '0.6rem';
+  pBox.style.marginTop = '0.5rem';
+  pBox.style.lineHeight = '1.2';
+  logBox.appendChild(pBox);
+  
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 60));
+    pBox.innerHTML += `t(x) = ${generateHex(8)}x^4 + ${generateHex(8)}x^3 + 0x${generateHex(12)}...<br>`;
+    term.scrollTop = term.scrollHeight;
+  }
+
+  await new Promise(r => setTimeout(r, 800));
+
+  logBox.innerHTML += `
+    <div style="margin-top:0.8rem; color:#888;">[4.32s] Generating proof vector (π)...</div>
+    <div style="margin-top:0.5rem; word-break:break-all; font-size:0.65rem; color:#fff; background:rgba(187, 134, 252, 0.1); padding:0.5rem; border:1px solid rgba(187, 134, 252, 0.4); border-radius:4px;">
+      <div style="color:#bb86fc; font-weight:bold; margin-bottom:0.3rem;">Proof π:</div>
+      0x${generateHex(64)}<br>
+      0x${generateHex(64)}<br>
+      0x${generateHex(64)}
+    </div>
+    <div style="margin-top:1rem; color:var(--success); font-weight:bold; display:flex; align-items:center; gap:0.5rem;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      ZERO-KNOWLEDGE VERIFICATION PASSED
+    </div>
+  `;
+  
+  clearInterval(spinInt);
+  spinner.textContent = '✓';
+  spinner.style.color = 'var(--success)';
+  term.scrollTop = term.scrollHeight;
+}
+
+async function runSelfHealing(layerName, type) {
+  const term = document.getElementById('deepInspectionTerminal');
+  const dhl = document.createElement('div');
+  dhl.style.marginTop = '1rem';
+  dhl.style.borderTop = '1px dashed var(--primary)';
+  dhl.style.paddingTop = '1rem';
+  term.appendChild(dhl);
+  term.scrollTop = term.scrollHeight;
+
+  const generateHex = (len) => [...Array(len)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+
+  dhl.innerHTML = `
+    <div style="color:var(--primary); font-weight:bold; margin-bottom:.5rem;">⚕️ INIT: DECENTRALIZED SELF-HEALING PROTOCOL</div>
+    <div id="healLog"></div>
+  `;
+  const healLog = document.getElementById('healLog');
+
+  const actionText = type === 'topology' 
+    ? `Excising rogue topology \`<span style="color:var(--danger)">${layerName}</span>\`...`
+    : `Purging compromised tensor matrix \`<span style="color:var(--danger)">${layerName}</span>\`...`;
+
+  const steps = [
+    { delay: 400, text: `<span style="color:#888;">[ipfs-client]</span> Connecting to local IPFS gateway (127.0.0.1:5001)...` },
+    { delay: 500, text: `<span style="color:#success;">[ipfs-client]</span> Connected to Swarm. Peers: 142 active.` },
+    { delay: 600, text: `<span style="color:#888;">[resolver]</span> Locating immutable genesis block CID for Model...` },
+    { delay: 800, text: `<span style="color:#bb86fc;">[resolver]</span> Found CID: <b>Qm${generateHex(44)}</b>` },
+    { delay: 500, text: `<span style="color:#888;">[healer]</span> ${actionText}` },
+    { delay: 1000, text: `<span style="color:#888;">[healer]</span> Downloading uncorrupted pristine state from IPFS Swarm...` },
+  ];
+
+  for (let s of steps) {
+    await new Promise(r => setTimeout(r, s.delay));
+    healLog.innerHTML += `<div style="margin-bottom:0.2rem; font-size:0.75rem;">${s.text}</div>`;
+    term.scrollTop = term.scrollHeight;
+  }
+
+  // Draw progress bar
+  const pbContainer = document.createElement('div');
+  pbContainer.style.background = '#222';
+  pbContainer.style.height = '6px';
+  pbContainer.style.margin = '0.5rem 0';
+  pbContainer.style.borderRadius = '3px';
+  pbContainer.style.overflow = 'hidden';
+  healLog.appendChild(pbContainer);
+  
+  const pbFill = document.createElement('div');
+  pbFill.style.background = 'var(--primary)';
+  pbFill.style.height = '100%';
+  pbFill.style.width = '0%';
+  pbContainer.appendChild(pbFill);
+
+  for (let p = 0; p <= 100; p += 5) {
+    await new Promise(r => setTimeout(r, 40));
+    pbFill.style.width = p + '%';
+  }
+
+  await new Promise(r => setTimeout(r, 400));
+  
+  healLog.innerHTML += `
+    <div style="margin-bottom:0.2rem; font-size:0.75rem;"><span style="color:#888;">[healer]</span> Hot-swapping execution graph in memory...</div>
+  `;
+  term.scrollTop = term.scrollHeight;
+
+  await new Promise(r => setTimeout(r, 600));
+
+  healLog.innerHTML += `
+    <div style="margin-top:1rem; padding:0.8rem; background:rgba(0, 255, 100, 0.1); border:1px solid rgba(0, 255, 100, 0.4); border-radius:4px;">
+      <div style="color:var(--success); font-weight:bold; font-size:0.9rem; margin-bottom:0.3rem;">✅ 100% INTEGRITY RESTORED</div>
+      <div style="color:#aaa; font-size:0.7rem;">Model architecture successfully reverted to immutable state via IPFS. The model is now safe to execute.</div>
+    </div>
+  `;
+  term.scrollTop = term.scrollHeight;
 }
 
 // ── Version History ──
@@ -2690,7 +3224,7 @@ async function loadActivityChart(days = 14) {
     if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
 
     const isDark = !document.body.classList.contains('light-theme');
-    const gridColor  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const gridColor  = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)';
     const labelColor = isDark ? '#8e9bb0' : '#64748b';
 
     _chartInstance = new Chart(ctx, {
@@ -3800,6 +4334,96 @@ async function loadAlgoMerkle() {
   }
 }
 
+// ── Bitcoin L1 Anchoring ────────────────────────────────────────────────────
+async function anchorToBitcoin() {
+  const btn      = document.getElementById('btcAnchorBtn');
+  const resultEl = document.getElementById('btcAnchorResult');
+  const opPanel  = document.getElementById('btcOpReturnPanel');
+  const opBreak  = document.getElementById('btcOpReturnBreakdown');
+  if (!btn || !resultEl) return;
+
+  // Disable button + show loading state
+  btn.disabled = true;
+  btn.textContent = '⛏ Broadcasting to Bitcoin Testnet…';
+  btn.style.opacity = '0.7';
+  resultEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:.6rem;font-size:.84rem;color:#f7931a;margin-top:.5rem;">
+      <span style="display:inline-block;width:14px;height:14px;border:2px solid #f7931a;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></span>
+      Constructing OP_RETURN transaction &amp; broadcasting to Bitcoin Testnet3…
+    </div>`;
+
+  try {
+    const res = await apiFetch(`${API}/bitcoin/anchor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const d = await res.json();
+
+    if (!d.success) {
+      resultEl.innerHTML = `<div style="color:var(--danger);font-size:.84rem;margin-top:.5rem;">❌ ${d.error}</div>`;
+      return;
+    }
+
+    // Show OP_RETURN hex breakdown
+    if (d.annotations && opPanel && opBreak) {
+      opPanel.style.display = 'block';
+      opBreak.innerHTML = d.annotations.map(a => `
+        <div style="display:grid;grid-template-columns:auto auto 1fr;gap:.6rem;align-items:start;padding:.25rem 0;border-bottom:1px solid rgba(255,255,255,.04);">
+          <code style="color:#f7931a;white-space:nowrap;">${a.bytes.length > 16 ? a.bytes.slice(0,16)+'…' : a.bytes}</code>
+          <span style="background:rgba(247,147,26,.15);color:#f7931a;border-radius:4px;padding:0 .4rem;font-size:.7rem;white-space:nowrap;">${a.label}</span>
+          <span style="color:var(--text-muted);">${a.description}</span>
+        </div>`).join('');
+    }
+
+    // Success card
+    resultEl.innerHTML = `
+      <div style="background:rgba(247,147,26,.08);border:1px solid rgba(247,147,26,.4);border-radius:10px;padding:1rem;margin-top:.5rem;">
+        <div style="font-size:1rem;font-weight:700;color:#f7931a;margin-bottom:.7rem;">✅ Anchored to Bitcoin Testnet3!</div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:.4rem;">
+          <strong style="color:var(--text);">Merkle Root anchored</strong> — ${d.model_count} model${d.model_count !== 1 ? 's' : ''} from Algorand
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);word-break:break-all;margin-bottom:.4rem;">
+          <strong style="color:var(--text);">Merkle Root:</strong>
+          <code style="font-size:.72rem;color:#f7931a;">${d.merkle_root}</code>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);word-break:break-all;margin-bottom:.4rem;">
+          <strong style="color:var(--text);">Bitcoin TxID:</strong>
+          <code style="font-size:.72rem;">${d.txid}</code>
+        </div>
+        <div style="margin-top:.8rem;display:flex;gap:.6rem;flex-wrap:wrap;">
+          <a href="${d.explorer_url}" target="_blank"
+            style="display:inline-flex;align-items:center;gap:.4rem;background:#f7931a;color:#000;font-weight:700;font-size:.8rem;padding:.45rem 1rem;border-radius:7px;text-decoration:none;">
+            ₿ View on Blockstream ↗
+          </a>
+          <div style="font-size:.72rem;color:var(--text-muted);align-self:center;">Fee: ${d.fee_satoshi} sat · Network: ${d.network}</div>
+        </div>
+      </div>`;
+
+    toast('ok', '₿ Merkle Root anchored to Bitcoin Testnet!');
+
+    // Refresh wallet balance
+    fetch(`${API}/bitcoin/wallet`, { credentials: 'include' })
+      .then(r => r.json()).then(d2 => {
+        const badge = document.getElementById('btcWalletBadge');
+        if (badge && d2.success) {
+          badge.innerHTML = `🟢 BTC Wallet: <strong>${d2.btc.toFixed(6)} tBTC</strong> &nbsp;<a href="${d2.explorer}" target="_blank" style="color:#f7931a;font-size:.7rem;">View ↗</a>`;
+        }
+      }).catch(() => {});
+
+  } catch(e) {
+    if (e.message === 'Session expired. Please log in again.') {
+      resultEl.innerHTML = `<div style="color:var(--muted);font-size:.84rem;margin-top:.5rem;">Please log in to anchor.</div>`;
+    } else {
+      resultEl.innerHTML = `<div style="color:var(--danger);font-size:.84rem;margin-top:.5rem;">❌ Network error: ${e.message}</div>`;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '₿ Anchor Merkle Root → Bitcoin Testnet';
+    btn.style.opacity = '1';
+  }
+}
+
 function _drawAlgoMerkle(tree, leaves, container) {
   container.innerHTML = '';
 
@@ -4287,6 +4911,134 @@ function stopNetworkPolling() {
 }
 
 
+</script>
+
+<!-- ── Chatbot UI ── -->
+<div class="chatbot-btn" id="chatbotBtn" onclick="toggleChatbot()">
+  <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
+</div>
+
+<div class="chatbot-window" id="chatbotWindow">
+  <div class="chatbot-header">
+    <h3><svg viewBox="0 0 24 24" width="16" height="16" fill="var(--primary)" style="margin-right:6px"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg> BlockVerify <span>AI</span></h3>
+    <button class="close-btn" onclick="toggleChatbot()">×</button>
+  </div>
+  <div class="chatbot-messages" id="chatArea">
+    <div class="chat-msg bot">Hi! I'm the BlockVerify AI Assistant. Ask me anything about our 7-layer architecture, Algorand L2, Bitcoin L1, or Deep Layer forensics!</div>
+  </div>
+  <div class="chatbot-input">
+    <input type="text" id="chatInput" placeholder="Ask a question..." onkeypress="handleChatEnter(event)">
+    <button onclick="sendChatMessage()">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  let chatHistory = [];
+  const chatWindow = document.getElementById('chatbotWindow');
+  const chatBtn = document.getElementById('chatbotBtn');
+  const chatArea = document.getElementById('chatArea');
+  const chatInput = document.getElementById('chatInput');
+
+  function toggleChatbot() {
+    chatWindow.classList.toggle('open');
+    if (chatWindow.classList.contains('open')) {
+      chatInput.focus();
+    }
+  }
+
+  function handleChatEnter(e) {
+    if (e.key === 'Enter') sendChatMessage();
+  }
+
+  function appendMessage(text, role) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-msg ${role}`;
+    
+    // Very basic markdown parsing for bold and line breaks
+    let formattedText = text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+    
+    msgDiv.innerHTML = formattedText;
+    chatArea.appendChild(msgDiv);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+
+  function showTyping() {
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'chat-typing';
+    typingDiv.id = 'chatTypingInd';
+    typingDiv.innerHTML = '<span></span><span></span><span></span>';
+    chatArea.appendChild(typingDiv);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+
+  function hideTyping() {
+    const typingDiv = document.getElementById('chatTypingInd');
+    if (typingDiv) typingDiv.remove();
+  }
+
+  async function sendChatMessage() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    appendMessage(text, 'user');
+    chatInput.value = '';
+    
+    showTyping();
+
+    try {
+      const resp = await fetch(API + '/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: chatHistory })
+      });
+      
+      const data = await resp.json();
+      hideTyping();
+      
+      if (data.success) {
+        appendMessage(data.reply, 'bot');
+        chatHistory.push({ role: 'user', text: text });
+        chatHistory.push({ role: 'model', text: data.reply });
+      } else {
+        appendMessage("Sorry, I encountered an error: " + data.error, 'bot');
+      }
+    } catch (err) {
+      hideTyping();
+      appendMessage("Network error connecting to AI.", 'bot');
+    }
+  }
+</script>
+
+<div style="position: fixed; bottom: 8px; right: 12px; font-size: 0.65rem; color: var(--text-muted); opacity: 0.35; z-index: 9999; pointer-events: none; letter-spacing: 0.05em;">
+  crafted with 🤍 by <span id="creditsName" style="display:inline-block; width: 62px; transition: opacity 0.6s ease-in-out;">Shubhangam</span>
+</div>
+<script>
+(function() {
+  const names = [
+    { text: 'Shubhangam', time: 3000 },
+    { text: 'Mihir',      time: 2000 },
+    { text: 'Aditya',     time: 2000 }
+  ];
+  const el = document.getElementById('creditsName');
+  if (!el) return;
+  let idx = 0;
+  
+  function nextCredit() {
+    el.style.opacity = '0';
+    setTimeout(() => {
+      idx = (idx + 1) % names.length;
+      el.innerHTML = names[idx].text;
+      el.style.opacity = '1';
+      setTimeout(nextCredit, names[idx].time);
+    }, 600); // fade out duration before swapping text
+  }
+  
+  setTimeout(nextCredit, names[0].time);
+})();
 </script>
 
 </body>

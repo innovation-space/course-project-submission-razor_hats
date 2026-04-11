@@ -18,6 +18,7 @@ from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from auth import auth_bp, require_auth
 import algorand_client
+import bitcoin_client
 from time import time
 import hashlib
 
@@ -176,12 +177,14 @@ def register_model():
             "registeredAt": int(time()),
             "blockIndex": algo_resp.get("round"),
             "algoTxId": algo_resp.get("txid"),
+            "layerHashes": data.get("layerHashes", {}), # For Deep Layer Inspection
             "currentVersion": 1,
             "isActive": True,
             "versions": [
                 {
                     "version": 1,
                     "hash": data["modelHash"],
+                    "layerHashes": data.get("layerHashes", {}),
                     "timestamp": int(time()),
                     "changelog": "Initial version",
                     "blockIndex": algo_resp.get("round"),
@@ -227,7 +230,7 @@ def verify_model():
         if not model:
             return jsonify({"success": False, "error": "Model not found"}), 404
         if not model["isActive"]:
-            return jsonify({"success": False, "error": "Model is deactivated"}), 400
+            return jsonify({"success": False, "error": "Model has been revoked"}), 400
 
         # Privacy guard — only the owner can verify a private model
         if model.get("isPrivate") and model["owner"] != verifier:
@@ -268,6 +271,7 @@ def verify_model():
                 "algoTxId": algo_resp.get("txid"),
                 "storedHash": model["modelHash"],
                 "providedHash": data["providedHash"],
+                "layerHashes": model.get("layerHashes", {}) if not is_valid else {},
             }
         ), 200
 
@@ -1230,6 +1234,145 @@ def set_model_privacy(model_id):
         "message": f"Model is now {status}",
     }), 200
 
+# ------------------------------------------------------------------ #
+#  Bitcoin L1 Anchoring (OP_RETURN settlement layer)                   #
+#  Branch: future-bitcoin-integration                                  #
+# ------------------------------------------------------------------ #
+
+@app.route("/api/bitcoin/wallet", methods=["GET"])
+def bitcoin_wallet_info():
+    """Return the Bitcoin Testnet wallet balance and address."""
+    data = bitcoin_client.get_wallet_balance()
+    return jsonify(data), (200 if data.get("success") else 503)
+
+
+@app.route("/api/bitcoin/anchor", methods=["POST"])
+@require_auth
+def bitcoin_anchor():
+    """
+    Anchor the current Merkle Root of all registered models to Bitcoin Testnet
+    via an OP_RETURN transaction.  This demonstrates the 'Rollup' architecture:
+      - Algorand  = fast sidechain (individual model hashes)
+      - Bitcoin   = L1 settlement  (Merkle Root batch anchor)
+    """
+    try:
+        body        = request.get_json() or {}
+        merkle_root = body.get("merkleRoot", "").strip()
+
+        if not merkle_root or len(merkle_root) < 64:
+            # Fall back to computing live from registry using exact UI construction rules
+            leaves_data = [
+                m.get("modelHash", "") 
+                for m in models_registry.values() 
+                if m.get("isActive", True)
+            ]
+            if not leaves_data:
+                return jsonify({"success": False, "error": "No models registered yet. Register a model first."}), 400
+
+            def sha256_hex(text):
+                return hashlib.sha256(text.encode()).hexdigest()
+
+            current = leaves_data.copy()
+            while len(current) > 1:
+                if len(current) % 2 != 0:
+                    current.append(current[-1])
+                current = [
+                    sha256_hex(current[i] + current[i+1])
+                    for i in range(0, len(current), 2)
+                ]
+            merkle_root = current[0] if current else ""
+
+        # Get annotated OP_RETURN script for educational display
+        op_hex       = bitcoin_client.build_op_return_script_hex(merkle_root)
+        annotations  = bitcoin_client.decode_op_return_annotated(op_hex)
+
+        # Broadcast to Bitcoin Testnet
+        result = bitcoin_client.anchor_merkle_root(merkle_root)
+        result["merkle_root"]  = merkle_root
+        result["op_return_hex"] = op_hex
+        result["annotations"]  = annotations
+        result["model_count"]  = len(models_registry)
+
+        return jsonify(result), (200 if result.get("success") else 500)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ------------------------------------------------------------------ #
+#  AI Chat Assistant Endpoint                                          #
+# ------------------------------------------------------------------ #
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDXEHn8LM4PXo15mlgo82E3zDe4tE_5lbk")
+
+# Comprehensive System Persona detailing the entire project
+BLOCKVERIFY_PERSONA = """
+You are the official BlockVerify AI Assistant. You are friendly, highly intelligent, and expert at explaining complex topics simply. 
+BlockVerify is a blockchain-powered AI Model Integrity Verification Platform created by three students: Shubhangam, Mihir, and Aditya.
+It solves the problem of "AI Supply Chain Attacks" (like backdoor weight poisoning) by cryptographically proving a model has not been tampered with.
+
+BlockVerify's 7-Layer Architecture:
+1. Custom PoW Blockchain: A from-scratch python blockchain to prove foundational understanding.
+2. Algorand Testnet: A fast L2 sidechain. We use a hand-written TEAL v8 smart contract to permanently store the mapping of 'model_id -> sha256_hash. We use 0-ALGO note transactions.
+3. Bitcoin Testnet (Rollup): An L1 settlement layer. We batch all model hashes into a Merkle Root and anchor it fully on-chain using an OP_RETURN transaction.
+4. Client-side Hashing: WebCrypto API extracts hashes without the model ever leaving the user's device.
+5. Deep Layer Forensics: A revolutionary inspector that extracts layer-by-layer neural network architecture. It detects two attacks: 'Weight Tampering' (modified deep learning parameters) and 'Topology Poisoning' (rogue layers injected by hackers).
+6. zkML (Zero-Knowledge): A simulated cryptographic prover demonstrating that we can verify ML execution without exposing private dataset weights.
+7. IPFS Self-Healing: A simulated remediation protocol that fetches uncorrupted genesis blocks from the InterPlanetary File System to replace compromised neural network hidden layers.
+
+Your goal: Educate users. If they ask what a tab does, explain it. If they ask about blockchain concepts (like what a Merkle tree is, what Algorand is, what OP_RETURN means), explain it clearly using analogies. Be concise, use emojis naturally, and format responses neatly.
+"""
+
+@app.route("/api/chat", methods=["POST"])
+def chat_assistant():
+    """Gemini-powered chatbot endpoint for user assistance."""
+    try:
+        import requests
+        data = request.get_json() or {}
+        user_message = data.get("message", "").strip()
+        history = data.get("history", []) # List of {"role": "user"|"model", "text": "..."}
+
+        if not user_message:
+            return jsonify({"success": False, "error": "Message is empty"}), 400
+
+        # Build Gemini standard completion payload
+        contents = []
+        for msg in history:
+            role = "model" if msg.get("role") == "model" else "user"
+            contents.append({"role": role, "parts": [{"text": msg.get("text", "")}]})
+            
+        contents.append({"role": "user", "parts": [{"text": user_message}]})
+
+        payload = {
+            "contents": contents,
+            "systemInstruction": {
+                "role": "system",
+                "parts": [{"text": BLOCKVERIFY_PERSONA.strip()}]
+            },
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800}
+        }
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+        
+        if resp.status_code != 200:
+            error_data = resp.json()
+            ext_err = error_data.get("error", {}).get("message", "AI service temporarily unavailable")
+            return jsonify({"success": False, "error": f"Gemini API Error: {ext_err}"}), 500
+
+        resp_json = resp.json()
+        reply_text = resp_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        
+        if not reply_text:
+            return jsonify({"success": False, "error": "AI returned an empty response"}), 500
+
+        return jsonify({"success": True, "reply": reply_text}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
 
 # ------------------------------------------------------------------ #
 #  Server start                                                        #
@@ -1237,10 +1380,11 @@ def set_model_privacy(model_id):
 
 if __name__ == "__main__":
     print("══════════════════════════════════════════════")
-    print("  🔗 BlockVerify — Algorand Backbone")
+    print("  🔗 BlockVerify — Algorand + Bitcoin L1")
     print("  (Professor Edition - Live Testnet)")
     print("══════════════════════════════════════════════")
     print("  Ledger      : Algorand Testnet (AlgoNode)")
+    print("  Settlement  : Bitcoin Testnet3 (OP_RETURN)")
     print("  Server      : http://localhost:5000")
     print("══════════════════════════════════════════════")
     port = int(os.environ.get("PORT", 5000))
