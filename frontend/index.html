@@ -3220,7 +3220,7 @@ async function loadActivityChart(days = 14) {
     if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
 
     const isDark = !document.body.classList.contains('light-theme');
-    const gridColor  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const gridColor  = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)';
     const labelColor = isDark ? '#8e9bb0' : '#64748b';
 
     _chartInstance = new Chart(ctx, {
