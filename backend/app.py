@@ -467,7 +467,39 @@ def export_audit_csv(model_id):
 
 @app.route("/api/chain", methods=["GET"])
 def get_chain():
-    return jsonify({"success": False, "error": "Chain is verified directly on Algorand. Please use Algorand Explorer."}), 400
+    """Return the custom PoW blockchain built from the models registry."""
+    from blockchain import Blockchain
+
+    bc = Blockchain(difficulty=2)
+    # Build transactions from the models registry
+    for model_id, m in sorted(models_registry.items(), key=lambda x: x[1].get("registered_at", 0)):
+        tx = {
+            "type": "register",
+            "model_id": model_id,
+            "model_name": m.get("name", "Unknown"),
+            "owner": m.get("owner", "system"),
+            "hash": m.get("hash", "")[:16] + "…",
+            "timestamp": m.get("registered_at", 0),
+        }
+        bc.pending_transactions.append(tx)
+        bc.mine_pending_transactions()
+
+        # Add verification transactions if any
+        logs = verification_logs.get(model_id, [])
+        for log in logs:
+            vtx = {
+                "type": "verify",
+                "model_id": model_id,
+                "result": log.get("result", "unknown"),
+                "timestamp": log.get("timestamp", 0),
+            }
+            bc.pending_transactions.append(vtx)
+            bc.mine_pending_transactions()
+
+    return jsonify({
+        "success": True,
+        "chain": [b.to_dict() for b in bc.chain]
+    })
 
 
 @app.route("/api/chain/validate", methods=["GET"])
