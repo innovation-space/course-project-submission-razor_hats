@@ -7,6 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1022,8 +1023,8 @@
   <!-- Explorer -->
   <div class="tab-content" id="tab-explorer">
     <div class="card">
-      <h2>🔗 Algorand Testnet Explorer</h2>
-      <p class="subtitle">All model registrations and verifications are broadcast as permanent, immutable transactions on the live Algorand Testnet.</p>
+      <h2>🔗 Chain Explorer — 3D Block Visualizer</h2>
+      <p class="subtitle">Live view of the BlockVerify custom PoW chain. Every block is cryptographically linked to the one before it. Hover to inspect — click to open.</p>
 
       <!-- Algorand badge -->
       <div style="display:flex;align-items:center;gap:1rem;background:linear-gradient(135deg,rgba(0,200,120,0.1),rgba(108,92,231,0.1));border:1px solid rgba(0,200,120,0.25);border-radius:14px;padding:1.2rem 1.5rem;margin-bottom:1.2rem;flex-wrap:wrap;">
@@ -1051,11 +1052,37 @@
         </div>
       </div>
 
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button class="btn btn-sec" id="validateBtn" onclick="validateChain()" data-tip="Confirm Algorand Testnet is maintaining full chain integrity.">Validate Chain Integrity</button>
         <a href="https://bank.testnet.algorand.network/" target="_blank" class="btn btn-sec" style="text-decoration:none;">Get Test ALGO 💰</a>
+        <button class="btn btn-sec" onclick="loadChain()" style="margin-left:auto;">↻ Refresh Chain</button>
       </div>
-      <div id="chainValid" style="margin-top:.8rem;"></div>
+      <div id="chainValid" style="margin-top:.4rem;"></div>
+      <div id="tamperResult" style="margin-top:.4rem;display:none;"></div>
+    </div>
+
+    <!-- 3D Chain Viewer -->
+    <div class="card" style="padding:0;overflow:hidden;position:relative;">
+      <div style="padding:1rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;font-size:.95rem;">⬛ 3D Block Chain</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.2rem;">Drag to rotate • Scroll to zoom • Click a block to inspect</div>
+        </div>
+        <span id="chainBlockCount" style="font-size:.78rem;color:var(--text-muted);"></span>
+      </div>
+      <div id="chain3dCanvas" style="width:100%;height:400px;position:relative;"></div>
+      <!-- Hover tooltip overlay -->
+      <div id="block3dTooltip" style="position:absolute;display:none;background:rgba(10,10,20,0.92);border:1px solid var(--primary);border-radius:6px;padding:.6rem .9rem;font-size:.78rem;font-family:var(--mono);color:var(--text);pointer-events:none;z-index:100;max-width:220px;line-height:1.5;"></div>
+    </div>
+
+    <!-- Fallback flat card view -->
+    <div class="card" id="chainFlatCard" style="padding:0;overflow:hidden;display:none;">
+      <div id="chainView"></div>
+      <div id="chainPager" style="display:none;padding:.8rem 1rem;background:rgba(0,0,0,0.2);border-top:1px solid var(--border);align-items:center;justify-content:center;gap:.7rem;">
+        <button class="btn btn-sec" id="pgPrev" onclick="changePage(-1)" style="padding:.4rem .9rem;">← Prev</button>
+        <span id="pgLabel" style="font-size:.85rem;color:var(--text-muted);"></span>
+        <button class="btn btn-sec" id="pgNext" onclick="changePage(1)" style="padding:.4rem .9rem;">Next →</button>
+      </div>
     </div>
   </div>
 
@@ -1714,6 +1741,8 @@ function switchTab(name, btn) {
   } else {
     if (typeof stopNetworkPolling === 'function') stopNetworkPolling();
   }
+  // Cleanup 3D scene when leaving explorer tab
+  if (name !== 'explorer' && typeof destroy3DScene === 'function') destroy3DScene();
 }
 
 // ── Hash Fingerprint Identicon Generator ──────────────────────────────
@@ -2710,7 +2739,216 @@ function renderBlockCard(b) {
   </div>`;
 }
 
+// ── 3D Chain Block Renderer (Three.js) ──────────────────────────────────
+let _3dScene, _3dCamera, _3dRenderer, _3dAnimId, _3dMeshes = [], _3dBlocks = [];
+let _3dMouse = new THREE.Vector2(-9, -9);
+let _3dRaycaster;
+let _3dHovered = null;
+let _3dOrbitStart = null, _3dRotX = 0.2, _3dRotY = 0;
+let _3dZoom = 1;
+
+function destroy3DScene() {
+  if (_3dAnimId) { cancelAnimationFrame(_3dAnimId); _3dAnimId = null; }
+  if (_3dRenderer) { _3dRenderer.dispose(); _3dRenderer = null; }
+  _3dScene = null; _3dCamera = null; _3dMeshes = []; _3dBlocks = [];
+}
+
+function build3DChain(blocks) {
+  const container = document.getElementById('chain3dCanvas');
+  if (!container || typeof THREE === 'undefined') return;
+  destroy3DScene();
+
+  const W = container.clientWidth || 800;
+  const H = container.clientHeight || 400;
+  _3dBlocks = blocks;
+
+  // Scene
+  _3dScene = new THREE.Scene();
+  _3dCamera = new THREE.PerspectiveCamera(55, W / H, 0.1, 200);
+  _3dCamera.position.set(0, 1.5, blocks.length * 2.4 + 2);
+  _3dRaycaster = new THREE.Raycaster();
+
+  // Renderer
+  _3dRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  _3dRenderer.setPixelRatio(window.devicePixelRatio);
+  _3dRenderer.setSize(W, H);
+  _3dRenderer.setClearColor(0x000000, 0);
+  container.innerHTML = '';
+  container.appendChild(_3dRenderer.domElement);
+
+  // Lights
+  _3dScene.add(new THREE.AmbientLight(0x6c5ce7, 0.4));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+  dir.position.set(5, 10, 5);
+  _3dScene.add(dir);
+
+  const SPACING = 3.5;
+  const totalW = (blocks.length - 1) * SPACING;
+
+  blocks.forEach((b, i) => {
+    const isGenesis = b.index === 0;
+    const x = i * SPACING - totalW / 2;
+
+    // Block mesh
+    const geo = new THREE.BoxGeometry(1.8, 1.1, 0.55);
+    const color = isGenesis ? 0xf0b429 : 0x6c5ce7;
+    const emissive = isGenesis ? 0x8a6500 : 0x3a1fa0;
+    const mat = new THREE.MeshPhongMaterial({
+      color, emissive, emissiveIntensity: 0.3,
+      transparent: true, opacity: 0.92,
+      shininess: 120,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, 0, 0);
+    mesh.userData = { blockIndex: b.index, baseY: 0, phase: i * 0.7, isGenesis };
+    _3dScene.add(mesh);
+    _3dMeshes.push(mesh);
+
+    // Wireframe edges
+    const edges = new THREE.EdgesGeometry(geo);
+    const lineMat = new THREE.LineBasicMaterial({ color: isGenesis ? 0xfeca57 : 0xa29bfe, transparent: true, opacity: 0.6 });
+    const wireframe = new THREE.LineSegments(edges, lineMat);
+    wireframe.position.copy(mesh.position);
+    _3dScene.add(wireframe);
+    mesh.userData.wireframe = wireframe;
+
+    // Point glow light
+    const light = new THREE.PointLight(isGenesis ? 0xf0b429 : 0x8b7cff, 0.8, 6);
+    light.position.set(x, 0.5, 1);
+    _3dScene.add(light);
+    mesh.userData.light = light;
+
+    // Chain connector to next block
+    if (i < blocks.length - 1) {
+      const nextX = (i + 1) * SPACING - totalW / 2;
+      const points = [new THREE.Vector3(x + 0.9, 0, 0), new THREE.Vector3(nextX - 0.9, 0, 0)];
+      const curve = new THREE.CatmullRomCurve3(points);
+      const tubeGeo = new THREE.TubeGeometry(curve, 8, 0.035, 6, false);
+      const tubeMat = new THREE.MeshBasicMaterial({ color: 0x6c5ce7, transparent: true, opacity: 0.5 });
+      _3dScene.add(new THREE.Mesh(tubeGeo, tubeMat));
+
+      // Arrow cone
+      const arrowGeo = new THREE.ConeGeometry(0.08, 0.2, 6);
+      const arrowMat = new THREE.MeshBasicMaterial({ color: 0xa29bfe });
+      const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+      arrow.rotation.z = -Math.PI / 2;
+      arrow.position.set((x + nextX) / 2, 0, 0);
+      _3dScene.add(arrow);
+    }
+  });
+
+  // Mouse interaction
+  const canvas = _3dRenderer.domElement;
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    _3dMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    _3dMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Orbit
+    if (_3dOrbitStart) {
+      const dx = e.clientX - _3dOrbitStart.x;
+      const dy = e.clientY - _3dOrbitStart.y;
+      _3dRotY += dx * 0.005;
+      _3dRotX = Math.max(-0.6, Math.min(0.7, _3dRotX + dy * 0.005));
+      _3dOrbitStart = { x: e.clientX, y: e.clientY };
+    }
+  });
+  canvas.addEventListener('mousedown', e => { _3dOrbitStart = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('mouseup', () => { _3dOrbitStart = null; });
+  canvas.addEventListener('mouseleave', () => {
+    _3dOrbitStart = null;
+    document.getElementById('block3dTooltip').style.display = 'none';
+  });
+  canvas.addEventListener('wheel', e => {
+    _3dZoom = Math.max(0.5, Math.min(3, _3dZoom + e.deltaY * 0.001));
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('click', e => {
+    if (!_3dHovered) return;
+    openBlockModal(_3dHovered.userData.blockIndex);
+  });
+
+  // Resize observer
+  if (window._3dResizeObs) window._3dResizeObs.disconnect();
+  window._3dResizeObs = new ResizeObserver(() => {
+    if (!_3dRenderer || !_3dCamera) return;
+    const w = container.clientWidth, h = container.clientHeight;
+    _3dRenderer.setSize(w, h);
+    _3dCamera.aspect = w / h;
+    _3dCamera.updateProjectionMatrix();
+  });
+  window._3dResizeObs.observe(container);
+
+  // Animate
+  const clock = new THREE.Clock();
+  function animate() {
+    _3dAnimId = requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    // Float blocks
+    _3dMeshes.forEach(m => {
+      m.position.y = Math.sin(t + m.userData.phase) * 0.08;
+      if (m.userData.wireframe)
+        m.userData.wireframe.position.y = m.position.y;
+    });
+
+    // Orbit camera
+    const r = (blocks.length * 1.7 + 3) * _3dZoom;
+    _3dCamera.position.x = Math.sin(_3dRotY) * r * Math.cos(_3dRotX);
+    _3dCamera.position.y = Math.sin(_3dRotX) * r + 1;
+    _3dCamera.position.z = Math.cos(_3dRotY) * r * Math.cos(_3dRotX);
+    _3dCamera.lookAt(0, 0, 0);
+
+    // Raycaster hover
+    _3dRaycaster.setFromCamera(_3dMouse, _3dCamera);
+    const hits = _3dRaycaster.intersectObjects(_3dMeshes);
+    const tooltip = document.getElementById('block3dTooltip');
+
+    if (_3dHovered && (_3dHovered !== (hits[0]?.object))) {
+      _3dHovered.scale.setScalar(1);
+      _3dHovered.material.emissiveIntensity = 0.3;
+      if (_3dHovered.userData.light) _3dHovered.userData.light.intensity = 0.8;
+      _3dHovered = null;
+      tooltip.style.display = 'none';
+    }
+    if (hits.length) {
+      const obj = hits[0].object;
+      if (obj !== _3dHovered) {
+        _3dHovered = obj;
+        obj.scale.setScalar(1.08);
+        obj.material.emissiveIntensity = 0.75;
+        if (obj.userData.light) obj.userData.light.intensity = 2.5;
+        const b = _3dBlocks[_3dMeshes.indexOf(obj)];
+        if (b) {
+          const ts = new Date(b.timestamp * 1000).toLocaleString();
+          tooltip.innerHTML = `<strong>Block #${b.index}</strong>${b.index===0?' 🌟 Genesis':''}<br>Txns: ${b.transactions.length}<br>Nonce: ${b.nonce.toLocaleString()}<br>${ts}<br><span style="color:var(--primary)">Click to inspect</span>`;
+        }
+      }
+      // Position tooltip
+      const rect = canvas.getBoundingClientRect();
+      const sx = ((_3dMouse.x + 1) / 2) * rect.width + rect.left;
+      const sy = ((-_3dMouse.y + 1) / 2) * rect.height + rect.top;
+      const outer = document.getElementById('chain3dCanvas').parentElement;
+      const or = outer.getBoundingClientRect();
+      tooltip.style.left = (sx - or.left + 12) + 'px';
+      tooltip.style.top  = (sy - or.top  - 60) + 'px';
+      tooltip.style.display = 'block';
+    }
+
+    _3dRenderer.render(_3dScene, _3dCamera);
+  }
+  animate();
+
+  // block count label
+  const label = document.getElementById('chainBlockCount');
+  if (label) label.textContent = `${blocks.length} block${blocks.length !== 1 ? 's' : ''} on chain`;
+}
+
 function renderChainPage() {
+  // 3D render takes full data; rebuild with current page visible but 3D shows all
+  build3DChain(_allBlocks);
+
   const start = _currentPage * BLOCKS_PER_PAGE;
   const pageBlocks = _allBlocks.slice(start, start + BLOCKS_PER_PAGE);
   const totalPages = Math.ceil(_allBlocks.length / BLOCKS_PER_PAGE);
