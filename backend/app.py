@@ -1260,21 +1260,27 @@ def bitcoin_anchor():
         merkle_root = body.get("merkleRoot", "").strip()
 
         if not merkle_root or len(merkle_root) < 64:
-            # Fall back to computing live from registry
-            if not models_registry:
+            # Fall back to computing live from registry using exact UI construction rules
+            leaves_data = [
+                m.get("modelHash", "") 
+                for m in models_registry.values() 
+                if m.get("isActive", True)
+            ]
+            if not leaves_data:
                 return jsonify({"success": False, "error": "No models registered yet. Register a model first."}), 400
 
-            # Build Merkle Root from all registered hashes
-            leaves = sorted(m["modelHash"] for m in models_registry.values())
-            current = [hashlib.sha256(h.encode()).digest() for h in leaves]
+            def sha256_hex(text):
+                return hashlib.sha256(text.encode()).hexdigest()
+
+            current = leaves_data.copy()
             while len(current) > 1:
                 if len(current) % 2 != 0:
-                    current.append(current[-1])  # duplicate last leaf
+                    current.append(current[-1])
                 current = [
-                    hashlib.sha256(current[i] + current[i+1]).digest()
+                    sha256_hex(current[i] + current[i+1])
                     for i in range(0, len(current), 2)
                 ]
-            merkle_root = current[0].hex()
+            merkle_root = current[0] if current else ""
 
         # Get annotated OP_RETURN script for educational display
         op_hex       = bitcoin_client.build_op_return_script_hex(merkle_root)
