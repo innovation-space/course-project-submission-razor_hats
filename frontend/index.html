@@ -1663,6 +1663,93 @@ async function refreshStats() {
   }
 }
 
+// ── Proof-of-Work Mining Engine (Bitcoin Hashcash-style) ─────────────
+
+const POW_DIFFICULTY = 3;                    // must match backend POW_DIFFICULTY
+const POW_PREFIX     = '0'.repeat(POW_DIFFICULTY);
+const POW_CHUNK      = 500;                  // hashes per async chunk (keeps UI alive)
+
+// SHA-256 of a plain string using Web Crypto (async, fast)
+async function sha256Str(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function powLog(msg, color) {
+  const log = document.getElementById('pow-log');
+  const line = document.createElement('div');
+  line.innerHTML = msg;
+  if (color) line.style.color = color;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function showPowTerminal() {
+  const bd = document.getElementById('pow-backdrop');
+  document.getElementById('pow-log').innerHTML = '';
+  document.getElementById('pow-stat-nonce').textContent = '0';
+  document.getElementById('pow-stat-time').textContent = '0.0s';
+  document.getElementById('pow-stat-rate').textContent = '—';
+  bd.style.display = 'flex';
+}
+function hidePowTerminal() {
+  document.getElementById('pow-backdrop').style.display = 'none';
+}
+
+async function minePoW(modelHash) {
+  showPowTerminal();
+  powLog(`<span style="color:#888;">$ blockverify-pow --difficulty ${POW_DIFFICULTY} --input ${modelHash.slice(0,16)}...</span>`);
+  powLog(`Initializing SHA-256 Hashcash engine...`);
+  powLog(`Target: hash must start with <strong style="color:#fff;">${POW_PREFIX}</strong> (${POW_DIFFICULTY * 4} leading zero bits)`);
+  powLog(`<span style="color:#888;">────────────────────────────────────────────────</span>`);
+
+  const startTs = performance.now();
+  let nonce = 0;
+  let found = null;
+
+  while (!found) {
+    // Process a chunk without blocking the UI
+    const chunkEnd = nonce + POW_CHUNK;
+    for (; nonce < chunkEnd; nonce++) {
+      const candidate = await sha256Str(`${modelHash}${nonce}`);
+      if (candidate.startsWith(POW_PREFIX)) {
+        found = { nonce, hash: candidate };
+        break;
+      }
+    }
+
+    // Update live stats after every chunk
+    const elapsed = (performance.now() - startTs) / 1000;
+    const rate = Math.round(nonce / elapsed);
+    document.getElementById('pow-stat-nonce').textContent = nonce.toLocaleString();
+    document.getElementById('pow-stat-time').textContent = elapsed.toFixed(1) + 's';
+    document.getElementById('pow-stat-rate').textContent = rate.toLocaleString();
+
+    // Log a sample line every 10 chunks for visual scrolling effect
+    if (!found && nonce % (POW_CHUNK * 10) === 0) {
+      const sample = await sha256Str(`${modelHash}${nonce - 1}`);
+      powLog(`<span style="color:#555;">nonce: ${(nonce - 1).toString().padStart(7,' ')} → ${sample}</span>`);
+    }
+
+    if (!found) await new Promise(r => setTimeout(r, 0)); // yield to browser
+  }
+
+  const elapsed = ((performance.now() - startTs) / 1000).toFixed(2);
+
+  // Flash success
+  powLog(`<span style="color:#888;">────────────────────────────────────────────────</span>`);
+  powLog(`<strong style="color:#fff;">⛏ BLOCK MINED!</strong>`, '#00ff41');
+  powLog(`Nonce: <strong style="color:#fff;">${found.nonce}</strong>`);
+  powLog(`Hash:  <strong style="color:#fff;">${found.hash}</strong>`);
+  powLog(`Time:  <strong style="color:#fff;">${elapsed}s</strong>  (${Math.round(found.nonce / parseFloat(elapsed)).toLocaleString()} H/s)`);
+  powLog(`<span style="color:#888;">────────────────────────────────────────────────</span>`);
+  powLog(`<strong>✅ Proof-of-Work accepted. Submitting to Algorand...</strong>`, '#00ff41');
+
+  await new Promise(r => setTimeout(r, 1200)); // let the user admire it
+  hidePowTerminal();
+  return found.nonce;
+}
+
 // ── Register ──
 async function registerModel() {
   const user = getUser(); if (!user) return;
@@ -1672,12 +1759,23 @@ async function registerModel() {
   if (!hash) { toast('err', 'Please upload a model file first.'); return; }
   if (!name) { toast('err', 'Model name is required.'); return; }
 
+  // ── Step 1: Mine Proof-of-Work ──────────────────────────────────────
+  let powNonce;
+  try {
+    powNonce = await minePoW(hash);
+  } catch(e) {
+    hidePowTerminal();
+    toast('err', 'Mining cancelled: ' + e.message);
+    return;
+  }
+  // ────────────────────────────────────────────────────────────────────
+
   setLoading('regBtn', true, 'Broadcasting to Algorand...');
   document.getElementById('regModelResult').innerHTML = '';
   try {
     const res = await apiFetch(API + '/register', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta })
+      body: JSON.stringify({ modelName:name, modelHash:hash, metadata:meta, powNonce })
     });
     const d = await res.json();
     if (d.success) {
@@ -1696,10 +1794,10 @@ async function registerModel() {
             <code>${d.modelId}</code>
             <button class="copy-btn" onclick="copyText('${d.modelId}', this)">Copy ID</button>
           </div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Algo TxID: <a href="https://lora.algokit.io/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Owner: ${user}</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">Algo TxID: <a href="https://lora.algokit.io/testnet/transaction/${d.algoTxId}" target="_blank" style="color:var(--primary)">${d.algoTxId.substring(0,8)}...</a> · Owner: ${user} · PoW nonce: ${powNonce}</div>
           <div style="margin-top:.8rem;">
-            <button class="btn" style="font-size:.8rem;padding:.45rem 1rem;background:linear-gradient(135deg,#6c5ce7,#00cec9);border:none;" 
-              onclick="downloadAlgoCertificate('${d.modelId}','${name.replace(/'/g,"\\'")}','${hash}','${d.algoTxId}','${d.round}')">
+            <button class="btn" style="font-size:.8rem;padding:.45rem 1rem;background:linear-gradient(135deg,#6c5ce7,#00cec9);border:none;"
+              onclick="downloadAlgoCertificate('${d.modelId}','${name.replace(/'/g,"\\\\'")}','${hash}','${d.algoTxId}','${d.round}')">
               📄 Download Blockchain Certificate
             </button>
           </div>
@@ -2815,6 +2913,43 @@ setInterval(refreshStats, 5000);
      Shows a glassmorphism tooltip after 4s of hovering
      any element with a [data-tip] attribute.
 ═══════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════
+     PoW Mining Terminal Modal
+     Hidden by default, shown during registration mining.
+═══════════════════════════════════════════════════════ -->
+<div id="pow-backdrop" style="
+  display:none; position:fixed; inset:0; z-index:9000;
+  background:rgba(0,0,0,.82); backdrop-filter:blur(6px);
+  align-items:center; justify-content:center;">
+  <div style="
+    width:min(640px,96vw); background:#0d0d0d;
+    border:1px solid #00ff41; border-radius:12px;
+    font-family:'Fira Code','Courier New',monospace;
+    box-shadow:0 0 40px rgba(0,255,65,.25), 0 0 80px rgba(0,255,65,.08);
+    overflow:hidden;">
+    <!-- Terminal title bar -->
+    <div style="background:#111; border-bottom:1px solid #00ff41; padding:.5rem 1rem; display:flex; align-items:center; gap:.6rem;">
+      <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57;display:inline-block;"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#febc2e;display:inline-block;"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#28c840;display:inline-block;"></span>
+      <span style="margin-left:.5rem;font-size:.72rem;color:#00ff41;letter-spacing:.08em;">BLOCKVERIFY — Bitcoin Proof-of-Work Engine v1.0</span>
+    </div>
+    <!-- Log output -->
+    <div id="pow-log" style="
+      padding:1rem 1.2rem; height:240px; overflow-y:auto;
+      font-size:.78rem; line-height:1.7; color:#00ff41;
+      scrollbar-width:thin; scrollbar-color:#003300 #0d0d0d;">
+    </div>
+    <!-- Stats bar -->
+    <div style="background:#0a0a0a; border-top:1px solid #003300; padding:.5rem 1.2rem; display:flex; gap:1.5rem; font-size:.7rem; color:#005500;">
+      <span>⛏ Nonce: <strong id="pow-stat-nonce" style="color:#00cc33;">0</strong></span>
+      <span>⏱ Time: <strong id="pow-stat-time" style="color:#00cc33;">0.0s</strong></span>
+      <span>🔢 H/s: <strong id="pow-stat-rate" style="color:#00cc33;">—</strong></span>
+      <span>🎯 Target: <strong style="color:#00cc33;">000...</strong></span>
+    </div>
+  </div>
+</div>
+
 <div id="bv-tip" role="tooltip" aria-live="polite"></div>
 <script>
 (function() {

@@ -8,10 +8,12 @@ Run:
 import pytest
 import sys
 import os
+import hashlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app import app, models_registry, verification_logs, _rate_log
+import app as app_module
 import algorand_client
 
 # Reset all state before each test so tests don't interfere with each other
@@ -23,7 +25,7 @@ def reset_state(monkeypatch):
     _rate_log.clear()
 
     # Prevent tests from writing to the real JSON database
-    monkeypatch.setattr(app, "save_state", lambda: None)
+    monkeypatch.setattr(app_module, "save_state", lambda: None)
 
     # Mock Algorand Testnet API
     global mock_algo_round
@@ -82,11 +84,23 @@ def client():
         yield AuthTestClient(c)
 
 
+# Helper – mine a valid PoW nonce for a given hash at difficulty k
+def mine_pow(hash_val: str, difficulty: int = 3) -> int:
+    prefix = '0' * difficulty
+    nonce = 0
+    while True:
+        candidate = hashlib.sha256(f"{hash_val}{nonce}".encode()).hexdigest()
+        if candidate.startswith(prefix):
+            return nonce
+        nonce += 1
+
+
 # Helper – register a model and return the parsed JSON
 def _register(client, name="TestModel", hash_val="abc123", owner="alice", metadata=""):
+    nonce = mine_pow(hash_val)
     return client.post(
         "/api/register",
-        json={"modelName": name, "modelHash": hash_val, "metadata": metadata, "owner": owner},
+        json={"modelName": name, "modelHash": hash_val, "metadata": metadata, "owner": owner, "powNonce": nonce},
     )
 
 
@@ -118,6 +132,12 @@ class TestRegister:
         # Without auth header, it should be intercepted by JWT middleware as 401
         resp = client.post("/api/register", json={"modelName": "M", "modelHash": "h"}, headers={"No-Auth": True})
         assert resp.status_code == 401
+
+    def test_register_missing_pow(self, client):
+        # No nonce submitted → should be rejected with 400
+        resp = client.post("/api/register", json={"modelName": "M", "modelHash": "abc123"})
+        assert resp.status_code == 400
+        assert "Proof-of-Work" in resp.get_json()["error"]
 
     def test_register_creates_block(self, client):
         resp = _register(client)
