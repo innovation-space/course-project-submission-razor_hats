@@ -116,6 +116,19 @@ def generate_model_id(model_name, model_hash, owner):
 
 
 # ------------------------------------------------------------------ #
+#  Proof-of-Work  (Hashcash / Bitcoin-style anti-spam)                 #
+# ------------------------------------------------------------------ #
+
+POW_DIFFICULTY = 3          # number of leading zeros required in SHA-256(modelHash + nonce)
+POW_PREFIX = '0' * POW_DIFFICULTY
+
+def verify_pow(model_hash: str, nonce: int) -> bool:
+    """Verify that SHA-256(modelHash + str(nonce)) starts with POW_PREFIX."""
+    candidate = hashlib.sha256(f"{model_hash}{nonce}".encode()).hexdigest()
+    return candidate.startswith(POW_PREFIX)
+
+
+# ------------------------------------------------------------------ #
 #  WRITE endpoints (mine a block)                                      #
 # ------------------------------------------------------------------ #
 
@@ -131,6 +144,14 @@ def register_model():
             return jsonify({"success": False, "error": "Model name is required"}), 400
         if not data.get("modelHash"):
             return jsonify({"success": False, "error": "Model hash is required"}), 400
+
+        # ── Proof-of-Work validation (Bitcoin Hashcash-style) ───────
+        nonce = data.get("powNonce")
+        if nonce is None:
+            return jsonify({"success": False, "error": f"Proof-of-Work required. Mine a nonce so SHA-256(hash+nonce) starts with {POW_PREFIX!r}."}), 400
+        if not verify_pow(data["modelHash"], int(nonce)):
+            return jsonify({"success": False, "error": "Proof-of-Work verification failed. Invalid nonce."}), 400
+        # ────────────────────────────────────────────────────────────
 
         allowed, err = check_rate_limit(owner)
         if not allowed:
