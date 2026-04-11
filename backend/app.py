@@ -1303,7 +1303,7 @@ def bitcoin_anchor():
 #  AI Chat Assistant Endpoint                                          #
 # ------------------------------------------------------------------ #
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyBi8DB_lw6N6tsITUOfKmAk8Ec01RHKLSY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDXEHn8LM4PXo15mlgo82E3zDe4tE_5lbk")
 
 # Comprehensive System Persona detailing the entire project
 BLOCKVERIFY_PERSONA = """
@@ -1356,7 +1356,9 @@ def chat_assistant():
         resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
         
         if resp.status_code != 200:
-            return jsonify({"success": False, "error": "AI service temporarily unavailable"}), 500
+            error_data = resp.json()
+            ext_err = error_data.get("error", {}).get("message", "AI service temporarily unavailable")
+            return jsonify({"success": False, "error": f"Gemini API Error: {ext_err}"}), 500
 
         resp_json = resp.json()
         reply_text = resp_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
