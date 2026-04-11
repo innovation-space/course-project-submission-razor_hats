@@ -4290,7 +4290,9 @@ async function anchorToBitcoin() {
       }).catch(() => {});
 
   } catch(e) {
-    if (e.message !== 'Session expired. Please log in again.') {
+    if (e.message === 'Session expired. Please log in again.') {
+      resultEl.innerHTML = `<div style="color:var(--muted);font-size:.84rem;margin-top:.5rem;">Please log in to anchor.</div>`;
+    } else {
       resultEl.innerHTML = `<div style="color:var(--danger);font-size:.84rem;margin-top:.5rem;">❌ Network error: ${e.message}</div>`;
     }
   } finally {
