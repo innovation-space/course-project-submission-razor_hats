@@ -13,6 +13,11 @@ Author: razor_hats team
 """
 
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed; fall back to environment variables
 import json
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
@@ -1303,7 +1308,7 @@ def bitcoin_anchor():
 #  AI Chat Assistant Endpoint                                          #
 # ------------------------------------------------------------------ #
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDXEHn8LM4PXo15mlgo82E3zDe4tE_5lbk")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # Comprehensive System Persona detailing the entire project
 BLOCKVERIFY_PERSONA = """
