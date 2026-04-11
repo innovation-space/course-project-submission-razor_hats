@@ -2741,7 +2741,7 @@ function renderBlockCard(b) {
 
 // ── 3D Chain Block Renderer (Three.js) ──────────────────────────────────
 let _3dScene, _3dCamera, _3dRenderer, _3dAnimId, _3dMeshes = [], _3dBlocks = [];
-let _3dMouse = new THREE.Vector2(-9, -9);
+let _3dMouse = { x: -9, y: -9 };  // lazy – real Vector2 created inside build3DChain
 let _3dRaycaster;
 let _3dHovered = null;
 let _3dOrbitStart = null, _3dRotX = 0.2, _3dRotY = 0;
@@ -2757,6 +2757,9 @@ function build3DChain(blocks) {
   const container = document.getElementById('chain3dCanvas');
   if (!container || typeof THREE === 'undefined') return;
   destroy3DScene();
+
+  // Initialize mouse vector now that THREE is loaded
+  _3dMouse = new THREE.Vector2(-9, -9);
 
   const W = container.clientWidth || 800;
   const H = container.clientHeight || 400;
