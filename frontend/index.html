@@ -2119,6 +2119,9 @@ async function runDeepInspection(storedLayers, computedLayers) {
         <div style="margin-top:0.8rem;">
           <span style="color:var(--danger);font-weight:bold;">Conclusion:</span> Structural anomaly. A rogue layer was illegally inserted into the model architecture. Malware injection vector suspected.
         </div>
+        <button class="btn btn-prim" style="margin-top:1rem; width:100%; border-radius:4px; font-weight:700; padding:.5rem;" onclick="runSelfHealing('${lName}', 'topology')">
+          ⚕️ Initiate Decentralized Self-Healing (IPFS)
+        </button>
       `;
       term.scrollTop = term.scrollHeight;
       return; // halt
@@ -2165,7 +2168,12 @@ async function runDeepInspection(storedLayers, computedLayers) {
       
       const conclusion = document.createElement('div');
       conclusion.style.marginTop = '0.8rem';
-      conclusion.innerHTML = `<span style="color:var(--danger);font-weight:bold;">Analysis:</span> Backdoor payload detected at Tensor Offset [42]. Weight parameter was artificially altered. Halt execution immediately.`;
+      conclusion.innerHTML = `
+        <span style="color:var(--danger);font-weight:bold;">Analysis:</span> Backdoor payload detected at Tensor Offset [42]. Weight parameter was artificially altered. Halt execution immediately.
+        <button class="btn btn-prim" style="margin-top:1rem; width:100%; border-radius:4px; font-weight:700; padding:.5rem;" onclick="runSelfHealing('${lName}', 'weight')">
+          ⚕️ Initiate Decentralized Self-Healing (IPFS)
+        </button>
+      `;
       errBox.appendChild(conclusion);
       
       term.scrollTop = term.scrollHeight;
@@ -2253,6 +2261,80 @@ async function runZkProof() {
   clearInterval(spinInt);
   spinner.textContent = '✓';
   spinner.style.color = 'var(--success)';
+  term.scrollTop = term.scrollHeight;
+}
+
+async function runSelfHealing(layerName, type) {
+  const term = document.getElementById('deepInspectionTerminal');
+  const dhl = document.createElement('div');
+  dhl.style.marginTop = '1rem';
+  dhl.style.borderTop = '1px dashed var(--primary)';
+  dhl.style.paddingTop = '1rem';
+  term.appendChild(dhl);
+  term.scrollTop = term.scrollHeight;
+
+  const generateHex = (len) => [...Array(len)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+
+  dhl.innerHTML = `
+    <div style="color:var(--primary); font-weight:bold; margin-bottom:.5rem;">⚕️ INIT: DECENTRALIZED SELF-HEALING PROTOCOL</div>
+    <div id="healLog"></div>
+  `;
+  const healLog = document.getElementById('healLog');
+
+  const actionText = type === 'topology' 
+    ? `Excising rogue topology \`<span style="color:var(--danger)">${layerName}</span>\`...`
+    : `Purging compromised tensor matrix \`<span style="color:var(--danger)">${layerName}</span>\`...`;
+
+  const steps = [
+    { delay: 400, text: `<span style="color:#888;">[ipfs-client]</span> Connecting to local IPFS gateway (127.0.0.1:5001)...` },
+    { delay: 500, text: `<span style="color:#success;">[ipfs-client]</span> Connected to Swarm. Peers: 142 active.` },
+    { delay: 600, text: `<span style="color:#888;">[resolver]</span> Locating immutable genesis block CID for Model...` },
+    { delay: 800, text: `<span style="color:#bb86fc;">[resolver]</span> Found CID: <b>Qm${generateHex(44)}</b>` },
+    { delay: 500, text: `<span style="color:#888;">[healer]</span> ${actionText}` },
+    { delay: 1000, text: `<span style="color:#888;">[healer]</span> Downloading uncorrupted pristine state from IPFS Swarm...` },
+  ];
+
+  for (let s of steps) {
+    await new Promise(r => setTimeout(r, s.delay));
+    healLog.innerHTML += `<div style="margin-bottom:0.2rem; font-size:0.75rem;">${s.text}</div>`;
+    term.scrollTop = term.scrollHeight;
+  }
+
+  // Draw progress bar
+  const pbContainer = document.createElement('div');
+  pbContainer.style.background = '#222';
+  pbContainer.style.height = '6px';
+  pbContainer.style.margin = '0.5rem 0';
+  pbContainer.style.borderRadius = '3px';
+  pbContainer.style.overflow = 'hidden';
+  healLog.appendChild(pbContainer);
+  
+  const pbFill = document.createElement('div');
+  pbFill.style.background = 'var(--primary)';
+  pbFill.style.height = '100%';
+  pbFill.style.width = '0%';
+  pbContainer.appendChild(pbFill);
+
+  for (let p = 0; p <= 100; p += 5) {
+    await new Promise(r => setTimeout(r, 40));
+    pbFill.style.width = p + '%';
+  }
+
+  await new Promise(r => setTimeout(r, 400));
+  
+  healLog.innerHTML += `
+    <div style="margin-bottom:0.2rem; font-size:0.75rem;"><span style="color:#888;">[healer]</span> Hot-swapping execution graph in memory...</div>
+  `;
+  term.scrollTop = term.scrollHeight;
+
+  await new Promise(r => setTimeout(r, 600));
+
+  healLog.innerHTML += `
+    <div style="margin-top:1rem; padding:0.8rem; background:rgba(0, 255, 100, 0.1); border:1px solid rgba(0, 255, 100, 0.4); border-radius:4px;">
+      <div style="color:var(--success); font-weight:bold; font-size:0.9rem; margin-bottom:0.3rem;">✅ 100% INTEGRITY RESTORED</div>
+      <div style="color:#aaa; font-size:0.7rem;">Model architecture successfully reverted to immutable state via IPFS. The model is now safe to execute.</div>
+    </div>
+  `;
   term.scrollTop = term.scrollHeight;
 }
 
