@@ -1601,11 +1601,33 @@ function sha256Fallback(buffer) {
 
 async function computeHash(file) {
   const buf = await file.arrayBuffer();
+
+  // Prefer Web Crypto (fast, native, only in secure contexts)
   if (window.crypto && window.crypto.subtle) {
     const hashBuf = await crypto.subtle.digest('SHA-256', buf);
     return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
   }
-  return sha256Fallback(buf);
+
+  // Fallback: run sha256Fallback in an inline Web Worker so the UI stays alive
+  return new Promise((resolve, reject) => {
+    // Serialize sha256Fallback into a blob URL so Worker can use it
+    const workerSrc = `
+      ${sha256Fallback.toString()}
+      self.onmessage = function(e) {
+        try { self.postMessage({ ok: true,  hash: sha256Fallback(e.data) }); }
+        catch(err) { self.postMessage({ ok: false, error: err.message }); }
+      };
+    `;
+    const url = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+    const worker = new Worker(url);
+    worker.onmessage = (e) => {
+      URL.revokeObjectURL(url);
+      worker.terminate();
+      e.data.ok ? resolve(e.data.hash) : reject(new Error(e.data.error));
+    };
+    worker.onerror = (e) => { URL.revokeObjectURL(url); worker.terminate(); reject(e); };
+    worker.postMessage(buf, [buf]); // transfer buffer (zero-copy)
+  });
 }
 
 async function onFile(s) {
@@ -1613,12 +1635,24 @@ async function onFile(s) {
   const file = document.getElementById(inputMap[s]).files[0];
   if (!file) return;
   document.getElementById(s+'FN').textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+
+  // Show instant spinner while hashing
+  const hashWrap = document.getElementById(s+'HashWrap');
+  const hashEl   = document.getElementById(s+'Hash');
+  hashWrap.style.display = 'block';
+  hashEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:.5rem;color:var(--text-muted);font-size:.82rem;">
+    <span style="display:inline-block;width:14px;height:14px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></span>
+    Computing SHA-256…
+  </span>`;
+
   try {
     const hex = await computeHash(file);
     hashes[s] = hex;
-    document.getElementById(s+'HashWrap').style.display = 'block';
-    document.getElementById(s+'Hash').innerHTML = `<span style="display:inline-flex;align-items:center;gap:.5rem;">${hashIdenticon(hex, 24)}<span>${hex}</span></span>`;
-  } catch(e) { toast('err', 'Hash error: ' + e.message); }
+    hashEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:.5rem;">${hashIdenticon(hex, 24)}<span>${hex}</span></span>`;
+  } catch(e) {
+    hashWrap.style.display = 'none';
+    toast('err', 'Hash error: ' + e.message);
+  }
 }
 
 ['reg','ver','av'].forEach(s => {
