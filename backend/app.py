@@ -177,12 +177,14 @@ def register_model():
             "registeredAt": int(time()),
             "blockIndex": algo_resp.get("round"),
             "algoTxId": algo_resp.get("txid"),
+            "layerHashes": data.get("layerHashes", {}), # For Deep Layer Inspection
             "currentVersion": 1,
             "isActive": True,
             "versions": [
                 {
                     "version": 1,
                     "hash": data["modelHash"],
+                    "layerHashes": data.get("layerHashes", {}),
                     "timestamp": int(time()),
                     "changelog": "Initial version",
                     "blockIndex": algo_resp.get("round"),
@@ -228,7 +230,7 @@ def verify_model():
         if not model:
             return jsonify({"success": False, "error": "Model not found"}), 404
         if not model["isActive"]:
-            return jsonify({"success": False, "error": "Model is deactivated"}), 400
+            return jsonify({"success": False, "error": "Model has been revoked"}), 400
 
         # Privacy guard — only the owner can verify a private model
         if model.get("isPrivate") and model["owner"] != verifier:
@@ -269,6 +271,7 @@ def verify_model():
                 "algoTxId": algo_resp.get("txid"),
                 "storedHash": model["modelHash"],
                 "providedHash": data["providedHash"],
+                "layerHashes": model.get("layerHashes", {}) if not is_valid else {},
             }
         ), 200
 
