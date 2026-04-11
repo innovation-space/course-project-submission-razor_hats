@@ -4449,9 +4449,33 @@ function stopNetworkPolling() {
 
 </script>
 
-<div style="position: fixed; bottom: 8px; right: 12px; font-size: 0.65rem; color: var(--text-muted); opacity: 0.4; z-index: 9999; pointer-events: none; letter-spacing: 0.05em;">
-  by Shubhangam . Mihir . Aditya
+<div id="creditsWatermark" style="position: fixed; bottom: 8px; right: 12px; font-size: 0.65rem; color: var(--text-muted); opacity: 0.35; z-index: 9999; pointer-events: none; letter-spacing: 0.05em; transition: opacity 0.6s ease-in-out;">
+  crafted with 🤍 by Shubhangam
 </div>
+<script>
+(function() {
+  const credits = [
+    { text: 'crafted with 🤍 by Shubhangam', time: 3000 },
+    { text: 'crafted with 🤍 by Mihir',      time: 2000 },
+    { text: 'crafted with 🤍 by Aditya',     time: 2000 }
+  ];
+  const el = document.getElementById('creditsWatermark');
+  if (!el) return;
+  let idx = 0;
+  
+  function nextCredit() {
+    el.style.opacity = '0';
+    setTimeout(() => {
+      idx = (idx + 1) % credits.length;
+      el.innerHTML = credits[idx].text;
+      el.style.opacity = '0.35';
+      setTimeout(nextCredit, credits[idx].time);
+    }, 600); // fade out duration before swapping text
+  }
+  
+  setTimeout(nextCredit, credits[0].time);
+})();
+</script>
 
 </body>
 </html>
