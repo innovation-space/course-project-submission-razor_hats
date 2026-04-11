@@ -1668,11 +1668,17 @@ async function refreshStats() {
 const POW_DIFFICULTY = 3;                    // must match backend POW_DIFFICULTY
 const POW_PREFIX     = '0'.repeat(POW_DIFFICULTY);
 const POW_CHUNK      = 500;                  // hashes per async chunk (keeps UI alive)
+const MIN_MINING_MS  = 3500;                 // minimum terminal display time (ms)
 
 // SHA-256 of a plain string using Web Crypto (async, fast)
 async function sha256Str(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  const encoded = new TextEncoder().encode(str);
+  if (window.crypto && window.crypto.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+  // Fallback for non-secure contexts (plain HTTP / 0.0.0.0)
+  return sha256Fallback(encoded.buffer);
 }
 
 function powLog(msg, color) {
@@ -1707,8 +1713,8 @@ async function minePoW(modelHash) {
   let nonce = 0;
   let found = null;
 
+  // ── Phase 1: Real mining loop ─────────────────────────────────────
   while (!found) {
-    // Process a chunk without blocking the UI
     const chunkEnd = nonce + POW_CHUNK;
     for (; nonce < chunkEnd; nonce++) {
       const candidate = await sha256Str(`${modelHash}${nonce}`);
@@ -1720,12 +1726,12 @@ async function minePoW(modelHash) {
 
     // Update live stats after every chunk
     const elapsed = (performance.now() - startTs) / 1000;
-    const rate = Math.round(nonce / elapsed);
+    const rate = Math.round(nonce / Math.max(elapsed, 0.001));
     document.getElementById('pow-stat-nonce').textContent = nonce.toLocaleString();
     document.getElementById('pow-stat-time').textContent = elapsed.toFixed(1) + 's';
     document.getElementById('pow-stat-rate').textContent = rate.toLocaleString();
 
-    // Log a sample line every 10 chunks for visual scrolling effect
+    // Log a sample every 10 chunks
     if (!found && nonce % (POW_CHUNK * 10) === 0) {
       const sample = await sha256Str(`${modelHash}${nonce - 1}`);
       powLog(`<span style="color:#555;">nonce: ${(nonce - 1).toString().padStart(7,' ')} → ${sample}</span>`);
@@ -1734,18 +1740,36 @@ async function minePoW(modelHash) {
     if (!found) await new Promise(r => setTimeout(r, 0)); // yield to browser
   }
 
-  const elapsed = ((performance.now() - startTs) / 1000).toFixed(2);
+  // ── Phase 2: Fake-scroll to pad to MIN_MINING_MS ─────────────────
+  // This ensures the visual is always 3-4 seconds long even on fast CPUs
+  let fakeNonce = found.nonce + 1;
+  while ((performance.now() - startTs) < MIN_MINING_MS) {
+    // Scroll a fake "still searching..." line every 120ms to look active
+    const fakeHash = await sha256Str(`${modelHash}${fakeNonce}`);
+    powLog(`<span style="color:#333;">nonce: ${fakeNonce.toString().padStart(7,' ')} → ${fakeHash}</span>`);
+    fakeNonce++;
 
-  // Flash success
+    const elapsed = (performance.now() - startTs) / 1000;
+    const rate = Math.round(fakeNonce / Math.max(elapsed, 0.001));
+    document.getElementById('pow-stat-nonce').textContent = fakeNonce.toLocaleString();
+    document.getElementById('pow-stat-time').textContent = elapsed.toFixed(1) + 's';
+    document.getElementById('pow-stat-rate').textContent = rate.toLocaleString();
+
+    await new Promise(r => setTimeout(r, 80)); // pace the fake lines visually
+  }
+
+  const totalElapsed = ((performance.now() - startTs) / 1000).toFixed(2);
+
+  // ── Phase 3: Success reveal ───────────────────────────────────────
   powLog(`<span style="color:#888;">────────────────────────────────────────────────</span>`);
   powLog(`<strong style="color:#fff;">⛏ BLOCK MINED!</strong>`, '#00ff41');
   powLog(`Nonce: <strong style="color:#fff;">${found.nonce}</strong>`);
   powLog(`Hash:  <strong style="color:#fff;">${found.hash}</strong>`);
-  powLog(`Time:  <strong style="color:#fff;">${elapsed}s</strong>  (${Math.round(found.nonce / parseFloat(elapsed)).toLocaleString()} H/s)`);
+  powLog(`Time:  <strong style="color:#fff;">${totalElapsed}s</strong>  (${Math.round(found.nonce / parseFloat(totalElapsed)).toLocaleString()} H/s)`);
   powLog(`<span style="color:#888;">────────────────────────────────────────────────</span>`);
   powLog(`<strong>✅ Proof-of-Work accepted. Submitting to Algorand...</strong>`, '#00ff41');
 
-  await new Promise(r => setTimeout(r, 1200)); // let the user admire it
+  await new Promise(r => setTimeout(r, 1200)); // let the user read it
   hidePowTerminal();
   return found.nonce;
 }
