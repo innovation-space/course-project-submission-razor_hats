@@ -2,6 +2,7 @@ import json, random, os
 
 def generate():
     print("Generating Academic Demo Models for BlockVerify...")
+    random.seed(42)  # Make models deterministic so multiple runs don't break verification
     
     # 1. Generate base architecture
     base_model = {
