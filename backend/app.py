@@ -1299,6 +1299,78 @@ def bitcoin_anchor():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ------------------------------------------------------------------ #
+#  AI Chat Assistant Endpoint                                          #
+# ------------------------------------------------------------------ #
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyBi8DB_lw6N6tsITUOfKmAk8Ec01RHKLSY")
+
+# Comprehensive System Persona detailing the entire project
+BLOCKVERIFY_PERSONA = """
+You are the official BlockVerify AI Assistant. You are friendly, highly intelligent, and expert at explaining complex topics simply. 
+BlockVerify is a blockchain-powered AI Model Integrity Verification Platform created by three students: Shubhangam, Mihir, and Aditya.
+It solves the problem of "AI Supply Chain Attacks" (like backdoor weight poisoning) by cryptographically proving a model has not been tampered with.
+
+BlockVerify's 7-Layer Architecture:
+1. Custom PoW Blockchain: A from-scratch python blockchain to prove foundational understanding.
+2. Algorand Testnet: A fast L2 sidechain. We use a hand-written TEAL v8 smart contract to permanently store the mapping of 'model_id -> sha256_hash. We use 0-ALGO note transactions.
+3. Bitcoin Testnet (Rollup): An L1 settlement layer. We batch all model hashes into a Merkle Root and anchor it fully on-chain using an OP_RETURN transaction.
+4. Client-side Hashing: WebCrypto API extracts hashes without the model ever leaving the user's device.
+5. Deep Layer Forensics: A revolutionary inspector that extracts layer-by-layer neural network architecture. It detects two attacks: 'Weight Tampering' (modified deep learning parameters) and 'Topology Poisoning' (rogue layers injected by hackers).
+6. zkML (Zero-Knowledge): A simulated cryptographic prover demonstrating that we can verify ML execution without exposing private dataset weights.
+7. IPFS Self-Healing: A simulated remediation protocol that fetches uncorrupted genesis blocks from the InterPlanetary File System to replace compromised neural network hidden layers.
+
+Your goal: Educate users. If they ask what a tab does, explain it. If they ask about blockchain concepts (like what a Merkle tree is, what Algorand is, what OP_RETURN means), explain it clearly using analogies. Be concise, use emojis naturally, and format responses neatly.
+"""
+
+@app.route("/api/chat", methods=["POST"])
+def chat_assistant():
+    """Gemini-powered chatbot endpoint for user assistance."""
+    try:
+        import requests
+        data = request.get_json() or {}
+        user_message = data.get("message", "").strip()
+        history = data.get("history", []) # List of {"role": "user"|"model", "text": "..."}
+
+        if not user_message:
+            return jsonify({"success": False, "error": "Message is empty"}), 400
+
+        # Build Gemini standard completion payload
+        contents = []
+        for msg in history:
+            role = "model" if msg.get("role") == "model" else "user"
+            contents.append({"role": role, "parts": [{"text": msg.get("text", "")}]})
+            
+        contents.append({"role": "user", "parts": [{"text": user_message}]})
+
+        payload = {
+            "contents": contents,
+            "systemInstruction": {
+                "role": "system",
+                "parts": [{"text": BLOCKVERIFY_PERSONA.strip()}]
+            },
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800}
+        }
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+        
+        if resp.status_code != 200:
+            return jsonify({"success": False, "error": "AI service temporarily unavailable"}), 500
+
+        resp_json = resp.json()
+        reply_text = resp_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        
+        if not reply_text:
+            return jsonify({"success": False, "error": "AI returned an empty response"}), 500
+
+        return jsonify({"success": True, "reply": reply_text}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
 
 # ------------------------------------------------------------------ #
 #  Server start                                                        #
