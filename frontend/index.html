@@ -2759,43 +2759,44 @@ function build3DChain(blocks) {
   const blockGlow  = 'rgba(108,92,231,0.55)';
 
   // Inject keyframes once
-  if (!document.getElementById('_3dkf')) {
+  if (!document.getElementById('_3dkf2')) {
+    const old = document.getElementById('_3dkf'); if (old) old.remove();
     const s = document.createElement('style');
-    s.id = '_3dkf';
+    s.id = '_3dkf2';
     s.textContent = `
       @keyframes _float3d { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
       @keyframes _dash3d { to { stroke-dashoffset: -24; } }
-      .css3d-scene { width:100%; height:400px; overflow-x:auto; overflow-y:hidden;
-        display:flex; align-items:center; padding:30px 40px; gap:0;
+      .css3d-scene { width:100%; height:440px; overflow-x:auto; overflow-y:hidden;
+        display:flex; align-items:center; padding:40px 50px; gap:0;
         background:transparent; position:relative; }
       .css3d-wrap { display:flex; align-items:center; gap:0; flex-shrink:0; }
       .css3d-block {
-        width:120px; height:76px; position:relative; perspective:600px; cursor:pointer;
-        flex-shrink:0;
-        transition:filter .3s;
+        width:90px; height:90px; position:relative; perspective:700px; cursor:pointer;
+        flex-shrink:0; transition:filter .3s;
       }
-      .css3d-block:hover { filter:brightness(1.4) saturate(1.3); }
-      .css3d-block:hover .css3d-cube { transform: rotateX(-18deg) rotateY(25deg) scale(1.08); }
+      .css3d-block:hover { filter:brightness(1.5) saturate(1.4); }
+      .css3d-block:hover .css3d-cube { transform: rotateX(-22deg) rotateY(30deg) scale(1.1); }
       .css3d-cube {
-        width:100%; height:100%; position:relative;
+        width:90px; height:90px; position:relative;
         transform-style:preserve-3d;
-        transform: rotateX(-18deg) rotateY(15deg);
-        transition: transform 0.4s ease, filter 0.3s;
+        transform: rotateX(-22deg) rotateY(20deg);
+        transition: transform 0.4s ease;
       }
       .css3d-face {
-        position:absolute; width:120px; height:76px;
+        position:absolute; width:90px; height:90px;
         border:1.5px solid;
         display:flex; align-items:center; justify-content:center;
-        font-size:11px; font-weight:700; font-family:var(--mono,'monospace');
-        line-height:1.3; text-align:center; padding:6px;
-        backface-visibility:visible;
+        font-size:10px; font-weight:700; font-family:var(--mono,'monospace');
+        line-height:1.35; text-align:center; padding:5px;
+        backface-visibility:visible; white-space:pre-line;
       }
-      .css3d-face.front  { transform: translateZ(20px); }
-      .css3d-face.back   { transform: rotateY(180deg) translateZ(20px); }
-      .css3d-face.right  { transform: rotateY(90deg) translateZ(60px); width:40px; }
-      .css3d-face.left   { transform: rotateY(-90deg) translateZ(60px); width:40px; }
-      .css3d-face.top    { transform: rotateX(90deg) translateZ(38px); height:40px; }
-      .css3d-face.bottom { transform: rotateX(-90deg) translateZ(38px); height:40px; }
+      /* Perfect cube: all 6 faces 90x90, each at 45px from centre */
+      .css3d-face.front  { transform: translateZ(45px); }
+      .css3d-face.back   { transform: rotateY(180deg)  translateZ(45px); }
+      .css3d-face.right  { transform: rotateY(90deg)   translateZ(45px); }
+      .css3d-face.left   { transform: rotateY(-90deg)  translateZ(45px); }
+      .css3d-face.top    { transform: rotateX(90deg)   translateZ(45px); }
+      .css3d-face.bottom { transform: rotateX(-90deg)  translateZ(45px); }
       .css3d-connector { display:flex; align-items:center; width:60px; flex-shrink:0; }
       .light-mode .css3d-face { color:#222 !important; }
     `;
