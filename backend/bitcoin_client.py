@@ -15,7 +15,12 @@ Author: razor_hats team | Branch: future-bitcoin-integration
 
 import hashlib
 import requests
-from bit import PrivateKeyTestnet
+try:
+    from bit import PrivateKeyTestnet
+    BIT_AVAILABLE = True
+except ImportError:
+    BIT_AVAILABLE = False
+    PrivateKeyTestnet = None
 
 # ── Wallet configuration ────────────────────────────────────────────────────
 # Testnet wallet funded via coinfaucet.eu
@@ -27,12 +32,16 @@ EXPLORER_BASE_URL = "https://blockstream.info/testnet/tx"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
-def _get_key() -> PrivateKeyTestnet:
+def _get_key():
+    if not BIT_AVAILABLE:
+        raise RuntimeError("Bitcoin library (bit) is not installed on this server.")
     return PrivateKeyTestnet(BTC_WIF)
 
 
 def get_wallet_balance() -> dict:
     """Return the current Testnet wallet balance in satoshis and BTC."""
+    if not BIT_AVAILABLE:
+        return {"success": False, "error": "Bitcoin library not available on this server. Run locally to use this feature."}
     try:
         key = _get_key()
         sat = int(key.get_balance('satoshi'))
