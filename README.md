@@ -146,6 +146,8 @@ We previously used Ethereum with Solidity smart contracts. We migrated away for 
 | Feature | Description |
 |---|---|
 | **Smart Contract Registry** | TEAL v8 contract stores `model_id → hash` on-chain |
+| **Interactive 3D Explorer** | Zero-dependency pure CSS 3D visualization of the blockchain blocks |
+| **Merkle Tree Visualization** | Cryptographic proof trees generated and cached instantly per block |
 | **Chain Proof Lookup** | Paste any Algo TxID → fetch raw Algorand Indexer data |
 | **Live Wallet Dashboard** | Server wallet balance, App ID, account creation round |
 | **Algorand Explorer Links** | Every TxID links directly to the live testnet explorer |
@@ -247,6 +249,7 @@ The App ID is shown on the **🔍 Chain Proof** tab under "Smart Contract Regist
 | Algorand Indexer | AlgoNode Indexer API |
 | Authentication | PyJWT (JSON Web Tokens) |
 | HTTP requests | `requests` library |
+| Environment Config | `python-dotenv` |
 | Data storage | JSON files (metadata cache) |
 
 ### Frontend
@@ -280,10 +283,19 @@ pip
 
 ```bash
 cd blockverify/backend
-pip install flask flask-cors py-algorand-sdk pyjwt requests pytest
+pip install flask flask-cors py-algorand-sdk pyjwt requests pytest python-dotenv
 ```
 
-### 2. Start the backend
+### 2. Configure Environment Secrets
+
+Create a `.env` file in the `backend/` directory to store your API keys securely:
+
+```bash
+# blockverify/backend/.env
+GEMINI_API_KEY="your_secure_gemini_api_key_here"
+```
+
+### 3. Start the backend
 
 ```bash
 python3 app.py
@@ -316,11 +328,21 @@ python3 -m http.server 8080
 
 Open → **http://localhost:8080**
 
-### 5. Register a model
+### 5. Generate Demo Models (Optional)
+
+To easily test the platform's security detection, we provide a script that generates an original model, a tampered model (weight modified), and a structurally anomalous model (rogue layer added).
+
+```bash
+cd blockverify
+python3 demo_tools/generate_demo_model.py
+```
+This generates `demo_original.json`, `demo_tampered_weights.json`, and `demo_rogue_layer.json` for you to upload.
+
+### 6. Register a model
 
 1. Login / Register an account
 2. Go to **Register** tab
-3. Upload any file (`.pt`, `.h5`, `.pkl`, `.onnx`, PDF, ZIP — anything)
+3. Upload any file (`.pt`, `.h5`, `.pkl`, `.onnx`, PDF, ZIP — or one of the generated `demo_*.json` files)
 4. Fill in model name → click **Register Model**
 5. The smart contract auto-deploys on the first registration
 6. You receive an **Algo TxID** — click to see it live on the blockchain ✅
