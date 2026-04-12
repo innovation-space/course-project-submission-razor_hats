@@ -7,6 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1022,8 +1023,8 @@
   <!-- Explorer -->
   <div class="tab-content" id="tab-explorer">
     <div class="card">
-      <h2>🔗 Algorand Testnet Explorer</h2>
-      <p class="subtitle">All model registrations and verifications are broadcast as permanent, immutable transactions on the live Algorand Testnet.</p>
+      <h2>🔗 Chain Explorer — 3D Block Visualizer</h2>
+      <p class="subtitle">Live view of the BlockVerify custom PoW chain. Every block is cryptographically linked to the one before it. Hover to inspect — click to open.</p>
 
       <!-- Algorand badge -->
       <div style="display:flex;align-items:center;gap:1rem;background:linear-gradient(135deg,rgba(0,200,120,0.1),rgba(108,92,231,0.1));border:1px solid rgba(0,200,120,0.25);border-radius:14px;padding:1.2rem 1.5rem;margin-bottom:1.2rem;flex-wrap:wrap;">
@@ -1051,11 +1052,37 @@
         </div>
       </div>
 
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button class="btn btn-sec" id="validateBtn" onclick="validateChain()" data-tip="Confirm Algorand Testnet is maintaining full chain integrity.">Validate Chain Integrity</button>
         <a href="https://bank.testnet.algorand.network/" target="_blank" class="btn btn-sec" style="text-decoration:none;">Get Test ALGO 💰</a>
+        <button class="btn btn-sec" onclick="loadChain()" style="margin-left:auto;">↻ Refresh Chain</button>
       </div>
-      <div id="chainValid" style="margin-top:.8rem;"></div>
+      <div id="chainValid" style="margin-top:.4rem;"></div>
+      <div id="tamperResult" style="margin-top:.4rem;display:none;"></div>
+    </div>
+
+    <!-- 3D Chain Viewer -->
+    <div class="card" style="padding:0;overflow:hidden;position:relative;">
+      <div style="padding:1rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;font-size:.95rem;">⬛ 3D Block Chain</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:.2rem;">Drag to rotate • Scroll to zoom • Click a block to inspect</div>
+        </div>
+        <span id="chainBlockCount" style="font-size:.78rem;color:var(--text-muted);"></span>
+      </div>
+      <div id="chain3dCanvas" style="width:100%;height:400px;position:relative;"></div>
+      <!-- Hover tooltip overlay -->
+      <div id="block3dTooltip" style="position:absolute;display:none;background:rgba(10,10,20,0.92);border:1px solid var(--primary);border-radius:6px;padding:.6rem .9rem;font-size:.78rem;font-family:var(--mono);color:var(--text);pointer-events:none;z-index:100;max-width:220px;line-height:1.5;"></div>
+    </div>
+
+    <!-- Fallback flat card view -->
+    <div class="card" id="chainFlatCard" style="padding:0;overflow:hidden;display:none;">
+      <div id="chainView"></div>
+      <div id="chainPager" style="display:none;padding:.8rem 1rem;background:rgba(0,0,0,0.2);border-top:1px solid var(--border);align-items:center;justify-content:center;gap:.7rem;">
+        <button class="btn btn-sec" id="pgPrev" onclick="changePage(-1)" style="padding:.4rem .9rem;">← Prev</button>
+        <span id="pgLabel" style="font-size:.85rem;color:var(--text-muted);"></span>
+        <button class="btn btn-sec" id="pgNext" onclick="changePage(1)" style="padding:.4rem .9rem;">Next →</button>
+      </div>
     </div>
   </div>
 
@@ -1714,6 +1741,8 @@ function switchTab(name, btn) {
   } else {
     if (typeof stopNetworkPolling === 'function') stopNetworkPolling();
   }
+  // Cleanup 3D scene when leaving explorer tab
+  if (name !== 'explorer' && typeof destroy3DScene === 'function') destroy3DScene();
 }
 
 // ── Hash Fingerprint Identicon Generator ──────────────────────────────
@@ -2710,7 +2739,145 @@ function renderBlockCard(b) {
   </div>`;
 }
 
+// ── 3D Chain Block Renderer (Pure CSS — no external deps) ────────────────
+let _3dAnimId = null;
+
+function destroy3DScene() {
+  if (_3dAnimId) { cancelAnimationFrame(_3dAnimId); _3dAnimId = null; }
+  const c = document.getElementById('chain3dCanvas');
+  if (c) c.innerHTML = '';
+}
+
+function build3DChain(blocks) {
+  const container = document.getElementById('chain3dCanvas');
+  if (!container) return;
+  destroy3DScene();
+
+  const isGenColor = '#f0b429';
+  const blockColor = '#6c5ce7';
+  const isGenGlow  = 'rgba(240,180,41,0.55)';
+  const blockGlow  = 'rgba(108,92,231,0.55)';
+
+  // Inject keyframes once
+  if (!document.getElementById('_3dkf2')) {
+    const old = document.getElementById('_3dkf'); if (old) old.remove();
+    const s = document.createElement('style');
+    s.id = '_3dkf2';
+    s.textContent = `
+      @keyframes _float3d { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+      @keyframes _dash3d { to { stroke-dashoffset: -24; } }
+      .css3d-scene { width:100%; height:440px; overflow-x:auto; overflow-y:hidden;
+        display:flex; align-items:center; padding:40px 50px; gap:0;
+        background:transparent; position:relative; }
+      .css3d-wrap { display:flex; align-items:center; gap:0; flex-shrink:0; }
+      .css3d-block {
+        width:90px; height:90px; position:relative; perspective:700px; cursor:pointer;
+        flex-shrink:0; transition:filter .3s;
+      }
+      .css3d-block:hover { filter:brightness(1.5) saturate(1.4); }
+      .css3d-block:hover .css3d-cube { transform: rotateX(-22deg) rotateY(30deg) scale(1.1); }
+      .css3d-cube {
+        width:90px; height:90px; position:relative;
+        transform-style:preserve-3d;
+        transform: rotateX(-22deg) rotateY(20deg);
+        transition: transform 0.4s ease;
+      }
+      .css3d-face {
+        position:absolute; width:90px; height:90px;
+        border:1.5px solid;
+        display:flex; align-items:center; justify-content:center;
+        font-size:10px; font-weight:700; font-family:var(--mono,'monospace');
+        line-height:1.35; text-align:center; padding:5px;
+        backface-visibility:visible; white-space:pre-line;
+      }
+      /* Perfect cube: all 6 faces 90x90, each at 45px from centre */
+      .css3d-face.front  { transform: translateZ(45px); }
+      .css3d-face.back   { transform: rotateY(180deg)  translateZ(45px); }
+      .css3d-face.right  { transform: rotateY(90deg)   translateZ(45px); }
+      .css3d-face.left   { transform: rotateY(-90deg)  translateZ(45px); }
+      .css3d-face.top    { transform: rotateX(90deg)   translateZ(45px); }
+      .css3d-face.bottom { transform: rotateX(-90deg)  translateZ(45px); }
+      .css3d-connector { display:flex; align-items:center; width:60px; flex-shrink:0; }
+      .light-mode .css3d-face { color:#222 !important; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  const scene = document.createElement('div');
+  scene.className = 'css3d-scene';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'css3d-wrap';
+  scene.appendChild(wrap);
+
+  blocks.forEach((b, i) => {
+    const isGenesis = b.index === 0;
+    const col   = isGenesis ? isGenColor : blockColor;
+    const glow  = isGenesis ? isGenGlow  : blockGlow;
+    const bg    = isGenesis ? 'rgba(240,180,41,0.13)' : 'rgba(108,92,231,0.13)';
+    const borderCol = isGenesis ? 'rgba(240,180,41,0.7)' : 'rgba(162,155,254,0.6)';
+    const ts    = new Date(b.timestamp * 1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const delay = (i * 0.3).toFixed(1);
+
+    // Floating wrapper
+    const floatDiv = document.createElement('div');
+    floatDiv.style.cssText = `animation:_float3d ${2 + (i % 3) * 0.5}s ease-in-out ${delay}s infinite; display:flex; align-items:center;`;
+
+    // Block
+    const blockDiv = document.createElement('div');
+    blockDiv.className = 'css3d-block';
+    blockDiv.title = `Block #${b.index}\nNonce: ${b.nonce}\nTxns: ${b.transactions.length}`;
+    blockDiv.style.cssText = `filter:drop-shadow(0 0 12px ${glow});`;
+    blockDiv.onclick = () => openBlockModal(b.index);
+
+    const cube = document.createElement('div');
+    cube.className = 'css3d-cube';
+
+    const faceData = [
+      {cls:'front', label: `#${b.index}\n${isGenesis ? '⭐ Genesis' : b.transactions.length + ' txn' + (b.transactions.length !== 1 ? 's' : '')}\n${ts}`},
+      {cls:'back',  label: b.hash ? b.hash.substring(0,8)+'…' : ''},
+      {cls:'right', label: ''},
+      {cls:'left',  label: ''},
+      {cls:'top',   label: ''},
+      {cls:'bottom',label: ''},
+    ];
+    faceData.forEach(fd => {
+      const face = document.createElement('div');
+      face.className = 'css3d-face ' + fd.cls;
+      face.style.cssText = `background:${bg}; border-color:${borderCol}; color:${col};`;
+      face.textContent = fd.label;
+      cube.appendChild(face);
+    });
+
+    blockDiv.appendChild(cube);
+    floatDiv.appendChild(blockDiv);
+    wrap.appendChild(floatDiv);
+
+    // Connector to next block
+    if (i < blocks.length - 1) {
+      const conn = document.createElement('div');
+      conn.className = 'css3d-connector';
+      conn.innerHTML = `<svg width="60" height="20" viewBox="0 0 60 20">
+        <defs><marker id="a${i}" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+          <path d="M0,0 L0,5 L5,2.5z" fill="${blockColor}"/></marker></defs>
+        <line x1="0" y1="10" x2="54" y2="10" stroke="${blockColor}" stroke-width="2"
+          stroke-dasharray="6 4" marker-end="url(#a${i})"
+          style="animation:_dash3d 1s linear infinite;"/>
+      </svg>`;
+      wrap.appendChild(conn);
+    }
+  });
+
+  container.appendChild(scene);
+
+  const label = document.getElementById('chainBlockCount');
+  if (label) label.textContent = `${blocks.length} block${blocks.length !== 1 ? 's' : ''} on chain`;
+}
+
 function renderChainPage() {
+  // 3D render takes full data; rebuild with current page visible but 3D shows all
+  build3DChain(_allBlocks);
+
   const start = _currentPage * BLOCKS_PER_PAGE;
   const pageBlocks = _allBlocks.slice(start, start + BLOCKS_PER_PAGE);
   const totalPages = Math.ceil(_allBlocks.length / BLOCKS_PER_PAGE);

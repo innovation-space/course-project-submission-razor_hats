@@ -13,6 +13,11 @@ Author: razor_hats team
 """
 
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed; fall back to environment variables
 import json
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
@@ -48,6 +53,11 @@ def save_state():
         json.dump(models_registry, f, indent=2)
     with open(LOGS_FILE, "w") as f:
         json.dump(verification_logs, f, indent=2)
+    # Invalidate the cached PoW chain so next request rebuilds with fresh data
+    try:
+        _invalidate_chain_cache()
+    except NameError:
+        pass  # _invalidate_chain_cache not defined yet during initial import
 
 
 def load_state():
@@ -72,6 +82,44 @@ verification_logs = {}      # modelId  → [verification records]
 
 # Load saved state on startup
 load_state()
+
+# PoW chain cache: rebuilt lazily, invalidated on every registry write
+_pow_chain_cache = None      # list[Block] or None
+_pow_chain_version = 0       # incremented on each write to registry
+
+def _invalidate_chain_cache():
+    global _pow_chain_cache
+    _pow_chain_cache = None
+
+def _get_pow_chain():
+    """Return the cached custom PoW chain, rebuilding only if the registry changed."""
+    global _pow_chain_cache, _pow_chain_version
+    if _pow_chain_cache is not None:
+        return _pow_chain_cache
+    from blockchain import Blockchain
+    bc = Blockchain(difficulty=2)
+    for model_id, m in sorted(models_registry.items(), key=lambda x: x[1].get("registered_at", 0)):
+        tx = {
+            "type": "register",
+            "model_id": model_id,
+            "model_name": m.get("name", "Unknown"),
+            "owner": m.get("owner", "system"),
+            "hash": m.get("hash", ""),
+            "timestamp": m.get("registered_at", 0),
+        }
+        bc.pending_transactions.append(tx)
+        bc.mine_pending_transactions()
+        for log in verification_logs.get(model_id, []):
+            vtx = {
+                "type": "verify",
+                "model_id": model_id,
+                "result": log.get("result", "unknown"),
+                "timestamp": log.get("timestamp", 0),
+            }
+            bc.pending_transactions.append(vtx)
+            bc.mine_pending_transactions()
+    _pow_chain_cache = bc.chain
+    return _pow_chain_cache
 
 # ------------------------------------------------------------------ #
 #  Rate limiter                                                        #
@@ -462,7 +510,12 @@ def export_audit_csv(model_id):
 
 @app.route("/api/chain", methods=["GET"])
 def get_chain():
-    return jsonify({"success": False, "error": "Chain is verified directly on Algorand. Please use Algorand Explorer."}), 400
+    """Return the custom PoW blockchain (cached)."""
+    chain = _get_pow_chain()
+    return jsonify({
+        "success": True,
+        "chain": [b.to_dict() for b in chain]
+    })
 
 
 @app.route("/api/chain/validate", methods=["GET"])
@@ -1189,13 +1242,24 @@ def _build_merkle(tx_hashes: list) -> dict:
 
 @app.route("/api/block/<int:index>/merkle", methods=["GET"])
 def get_merkle_tree(index):
-    """
-    Merkle tree endpoint — disabled, data now lives on Algorand Testnet.
-    """
+    """Return the Merkle tree for a block (uses cached chain)."""
+    chain = _get_pow_chain()
+
+    if index >= len(chain):
+        return jsonify({"success": False, "error": f"Block #{index} not found (chain has {len(chain)} blocks)"}), 404
+
+    block = chain[index]
+    tx_hashes = [_tx_hash(tx) for tx in block.transactions]
+    tree = _build_merkle(tx_hashes)
+
     return jsonify({
-        "success": False,
-        "error": "Block data is stored on the Algorand Testnet. Visit https://lora.algonode.network/testnet to explore transactions.",
-    }), 404
+        "success": True,
+        "blockIndex": index,
+        "txCount": len(block.transactions),
+        "merkleRoot": tree["hash"],
+        "tree": tree,
+        "leaves": tx_hashes,
+    })
 
 
 # ------------------------------------------------------------------ #
@@ -1303,7 +1367,7 @@ def bitcoin_anchor():
 #  AI Chat Assistant Endpoint                                          #
 # ------------------------------------------------------------------ #
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDXEHn8LM4PXo15mlgo82E3zDe4tE_5lbk")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # Comprehensive System Persona detailing the entire project
 BLOCKVERIFY_PERSONA = """
