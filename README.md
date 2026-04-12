@@ -437,5 +437,19 @@ Indexer:  https://testnet-idx.algonode.cloud/v2/transactions/<TXID>
 
 <img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/a26e9642-a146-4cd5-b299-b6b2f8c1bb24" />
 
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/4b56e7ba-cfc2-4482-8a69-81699d47190b" />
+
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/e82b6535-4916-4ff3-a05d-3bcb2d9b51c3" />
+
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/43b63b10-da9a-4689-8c98-a6af081bd8f6" />
+
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/9e5baba1-67a6-470a-9f42-1f8f177256fc" />
+
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/37d11de7-fd52-479a-b179-13e7f2e5e40b" />
+
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/b92c6d1e-c2d2-4e8d-962d-bde5ba3f242b" />
+
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/44029d08-5cf5-4feb-9582-5d00df1754f2" />
+
 ---
 > *"Trustless verification of AI models — not because we say so, but because the blockchain says so."*
