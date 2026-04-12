@@ -97,18 +97,19 @@ def _get_pow_chain():
     if _pow_chain_cache is not None:
         return _pow_chain_cache
     from blockchain import Blockchain
-    bc = Blockchain(difficulty=2)
-    for model_id, m in sorted(models_registry.items(), key=lambda x: x[1].get("registered_at", 0)):
+    oldest_tx_time = min((m.get("registeredAt", time()) for m in models_registry.values()), default=time())
+    bc = Blockchain(difficulty=2, genesis_timestamp=oldest_tx_time - 60)
+    for model_id, m in sorted(models_registry.items(), key=lambda x: x[1].get("registeredAt", 0)):
         tx = {
             "type": "register",
             "model_id": model_id,
             "model_name": m.get("name", "Unknown"),
             "owner": m.get("owner", "system"),
             "hash": m.get("hash", ""),
-            "timestamp": m.get("registered_at", 0),
+            "timestamp": m.get("registeredAt", 0),
         }
         bc.pending_transactions.append(tx)
-        bc.mine_pending_transactions()
+        bc.mine_pending_transactions(block_timestamp=m.get("registeredAt", 0))
         for log in verification_logs.get(model_id, []):
             vtx = {
                 "type": "verify",
@@ -117,7 +118,7 @@ def _get_pow_chain():
                 "timestamp": log.get("timestamp", 0),
             }
             bc.pending_transactions.append(vtx)
-            bc.mine_pending_transactions()
+            bc.mine_pending_transactions(block_timestamp=log.get("timestamp", 0))
     _pow_chain_cache = bc.chain
     return _pow_chain_cache
 

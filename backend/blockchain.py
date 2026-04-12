@@ -109,19 +109,19 @@ class Blockchain:
         pending_transactions (list):   Transactions waiting to be mined.
     """
 
-    def __init__(self, difficulty=4):
+    def __init__(self, difficulty=4, genesis_timestamp=None):
         self.chain = []
         self.difficulty = difficulty
         self.pending_transactions = []
 
         # Mine the genesis block
-        self.chain.append(self._create_genesis_block())
+        self.chain.append(self._create_genesis_block(genesis_timestamp))
 
-    def _create_genesis_block(self):
+    def _create_genesis_block(self, genesis_timestamp=None):
         """Create and mine the first block (index 0, previous_hash '0')."""
         genesis = Block(
             index=0,
-            timestamp=time(),
+            timestamp=genesis_timestamp if genesis_timestamp else time(),
             transactions=[{"type": "genesis", "message": "BlockVerify Genesis Block"}],
             previous_hash="0",
         )
@@ -140,7 +140,7 @@ class Blockchain:
         """
         self.pending_transactions.append(transaction)
 
-    def mine_pending_transactions(self):
+    def mine_pending_transactions(self, block_timestamp=None):
         """
         Create a new block from all pending transactions, mine it
         (proof-of-work), and append it to the chain.
@@ -152,9 +152,12 @@ class Blockchain:
         if not self.pending_transactions:
             return None
 
+        # Use the provided historical timestamp, or the current time
+        ts = block_timestamp if block_timestamp is not None else time()
+
         new_block = Block(
             index=len(self.chain),
-            timestamp=time(),
+            timestamp=ts,
             transactions=self.pending_transactions.copy(),
             previous_hash=self.get_latest_block().hash,
         )
