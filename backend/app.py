@@ -53,6 +53,11 @@ def save_state():
         json.dump(models_registry, f, indent=2)
     with open(LOGS_FILE, "w") as f:
         json.dump(verification_logs, f, indent=2)
+    # Invalidate the cached PoW chain so next request rebuilds with fresh data
+    try:
+        _invalidate_chain_cache()
+    except NameError:
+        pass  # _invalidate_chain_cache not defined yet during initial import
 
 
 def load_state():
@@ -77,6 +82,44 @@ verification_logs = {}      # modelId  → [verification records]
 
 # Load saved state on startup
 load_state()
+
+# PoW chain cache: rebuilt lazily, invalidated on every registry write
+_pow_chain_cache = None      # list[Block] or None
+_pow_chain_version = 0       # incremented on each write to registry
+
+def _invalidate_chain_cache():
+    global _pow_chain_cache
+    _pow_chain_cache = None
+
+def _get_pow_chain():
+    """Return the cached custom PoW chain, rebuilding only if the registry changed."""
+    global _pow_chain_cache, _pow_chain_version
+    if _pow_chain_cache is not None:
+        return _pow_chain_cache
+    from blockchain import Blockchain
+    bc = Blockchain(difficulty=2)
+    for model_id, m in sorted(models_registry.items(), key=lambda x: x[1].get("registered_at", 0)):
+        tx = {
+            "type": "register",
+            "model_id": model_id,
+            "model_name": m.get("name", "Unknown"),
+            "owner": m.get("owner", "system"),
+            "hash": m.get("hash", ""),
+            "timestamp": m.get("registered_at", 0),
+        }
+        bc.pending_transactions.append(tx)
+        bc.mine_pending_transactions()
+        for log in verification_logs.get(model_id, []):
+            vtx = {
+                "type": "verify",
+                "model_id": model_id,
+                "result": log.get("result", "unknown"),
+                "timestamp": log.get("timestamp", 0),
+            }
+            bc.pending_transactions.append(vtx)
+            bc.mine_pending_transactions()
+    _pow_chain_cache = bc.chain
+    return _pow_chain_cache
 
 # ------------------------------------------------------------------ #
 #  Rate limiter                                                        #
@@ -467,38 +510,11 @@ def export_audit_csv(model_id):
 
 @app.route("/api/chain", methods=["GET"])
 def get_chain():
-    """Return the custom PoW blockchain built from the models registry."""
-    from blockchain import Blockchain
-
-    bc = Blockchain(difficulty=2)
-    # Build transactions from the models registry
-    for model_id, m in sorted(models_registry.items(), key=lambda x: x[1].get("registered_at", 0)):
-        tx = {
-            "type": "register",
-            "model_id": model_id,
-            "model_name": m.get("name", "Unknown"),
-            "owner": m.get("owner", "system"),
-            "hash": m.get("hash", "")[:16] + "…",
-            "timestamp": m.get("registered_at", 0),
-        }
-        bc.pending_transactions.append(tx)
-        bc.mine_pending_transactions()
-
-        # Add verification transactions if any
-        logs = verification_logs.get(model_id, [])
-        for log in logs:
-            vtx = {
-                "type": "verify",
-                "model_id": model_id,
-                "result": log.get("result", "unknown"),
-                "timestamp": log.get("timestamp", 0),
-            }
-            bc.pending_transactions.append(vtx)
-            bc.mine_pending_transactions()
-
+    """Return the custom PoW blockchain (cached)."""
+    chain = _get_pow_chain()
     return jsonify({
         "success": True,
-        "chain": [b.to_dict() for b in bc.chain]
+        "chain": [b.to_dict() for b in chain]
     })
 
 
@@ -1226,13 +1242,24 @@ def _build_merkle(tx_hashes: list) -> dict:
 
 @app.route("/api/block/<int:index>/merkle", methods=["GET"])
 def get_merkle_tree(index):
-    """
-    Merkle tree endpoint — disabled, data now lives on Algorand Testnet.
-    """
+    """Return the Merkle tree for a block (uses cached chain)."""
+    chain = _get_pow_chain()
+
+    if index >= len(chain):
+        return jsonify({"success": False, "error": f"Block #{index} not found (chain has {len(chain)} blocks)"}), 404
+
+    block = chain[index]
+    tx_hashes = [_tx_hash(tx) for tx in block.transactions]
+    tree = _build_merkle(tx_hashes)
+
     return jsonify({
-        "success": False,
-        "error": "Block data is stored on the Algorand Testnet. Visit https://lora.algonode.network/testnet to explore transactions.",
-    }), 404
+        "success": True,
+        "blockIndex": index,
+        "txCount": len(block.transactions),
+        "merkleRoot": tree["hash"],
+        "tree": tree,
+        "leaves": tx_hashes,
+    })
 
 
 # ------------------------------------------------------------------ #
