@@ -437,7 +437,7 @@ Indexer:  https://testnet-idx.algonode.cloud/v2/transactions/<TXID>
 
 <img width="1838" height="1042" alt="image" src="https://github.com/user-attachments/assets/a26e9642-a146-4cd5-b299-b6b2f8c1bb24" />
 
-<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/4b56e7ba-cfc2-4482-8a69-81699d47190b" />
+<img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/3273dda3-4cb3-418a-ba0c-13aced5b57c2" />
 
 <img width="1840" height="1040" alt="image" src="https://github.com/user-attachments/assets/e82b6535-4916-4ff3-a05d-3bcb2d9b51c3" />
 
