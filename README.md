@@ -5,6 +5,17 @@
 
 ---
 
+## 🌐 Live Demo
+
+| Service | URL |
+|---|---|
+| 🖥️ **Frontend** | [https://incredible-swan-b3b47a.netlify.app](https://incredible-swan-b3b47a.netlify.app) |
+| ⚙️ **Backend API** | [https://blockverify-backend-4xug.onrender.com](https://blockverify-backend-4xug.onrender.com) |
+
+> ⚠️ **Note:** The backend runs on Render's free tier. It **spins down after 15 minutes of inactivity** — the first request may take 30–60 seconds to wake up (cold start). Any registered data is cleared on restart due to ephemeral storage. For the full persistent experience, run the project locally using the instructions below.
+
+---
+
 ## Table of Contents
 
 - [Project Overview](#project-overview)
