@@ -25,11 +25,52 @@ ALGOD_TOKEN       = ""
 
 client = algod.AlgodClient(ALGOD_TOKEN, ALGOD_ADDRESS)
 
+# ── Friendly error mapping ─────────────────────────────────────────────
+_NET_HINTS = (
+    "timed out", "timeout", "connection", "max retries", "failed to establish",
+    "temporarily unavailable", "service unavailable", "502", "503", "504",
+    "name resolution", "getaddrinfo", "unreachable", "remote end closed",
+    "connection reset", "connection refused", "ssl",
+)
+
+def _friendly_algo_error(exc) -> str:
+    """Translate low-level network/SDK failures into a clear, actionable message."""
+    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        return ("Algorand network unreachable — the Testnet node (AlgoNode) isn't responding "
+                "right now. Please try again in a few minutes.")
+    low = str(exc).lower()
+    if any(h in low for h in _NET_HINTS):
+        return ("Algorand network unreachable — the Testnet node (AlgoNode) isn't responding "
+                "right now. Please try again in a few minutes.")
+    return f"Algorand transaction failed: {exc}"
+
+
 # ── Wallet persistence ─────────────────────────────────────────────────
 WALLET_FILE = os.path.join(os.path.dirname(__file__), "data", "algo_wallet.json")
 
 
+def _wallet_from_env():
+    """Load the server wallet from the environment, if configured.
+
+    Hosts with an ephemeral disk (e.g. Render's free tier) lose backend/data/ on every
+    restart, which would otherwise generate a fresh, unfunded wallet each boot.
+    ALGO_MNEMONIC (25 words) or ALGO_PRIVATE_KEY (base64, as stored in
+    algo_wallet.json) keeps one funded wallet across restarts.
+    """
+    mnemonic_words = (os.environ.get("ALGO_MNEMONIC") or "").strip()
+    private_key = (os.environ.get("ALGO_PRIVATE_KEY") or "").strip()
+    if mnemonic_words:
+        from algosdk import mnemonic
+        private_key = mnemonic.to_private_key(mnemonic_words)
+    if not private_key:
+        return None
+    return account.address_from_private_key(private_key), private_key
+
+
 def get_or_create_wallet():
+    from_env = _wallet_from_env()
+    if from_env:
+        return from_env
     if os.path.exists(WALLET_FILE):
         with open(WALLET_FILE) as f:
             data = json.load(f)
@@ -79,10 +120,18 @@ def _get_or_deploy_contract():
 
 # ── 1. Broadcast hash as note-transaction ─────────────────────────────
 
-def broadcast_hash_to_algorand(model_id, model_name, model_hash, owner):
+def broadcast_hash_to_algorand(model_id, model_name, model_hash, owner,
+                               layer_root=None, layer_count=0):
     """
     Sends a 0-ALGO self-transaction with JSON metadata in the note field.
     Also calls the smart contract to permanently store model_id → hash.
+
+    layer_root / layer_count (registration only): the Merkle root of the ordered
+    layer manifest ("lmr") and its leaf count ("lc") are embedded in the note so
+    the manifest commitment is publicly verifiable without trusting our server.
+    The leaf count is anchored alongside the root to preclude the classic
+    odd-duplication ambiguity (CVE-2012-2459-style) of duplicate-last trees.
+
     Returns {"success": True, "txid": ..., "round": ..., "app_id": ..., "contract_txid": ...}
     """
     try:
@@ -106,6 +155,9 @@ def broadcast_hash_to_algorand(model_id, model_name, model_hash, owner):
             "hash":  model_hash,
             "owner": owner,
         }
+        if layer_root:
+            payload["lmr"] = layer_root
+            payload["lc"]  = layer_count
         note = json.dumps(payload).encode()
 
         txn = PaymentTxn(
@@ -143,6 +195,13 @@ def broadcast_hash_to_algorand(model_id, model_name, model_hash, owner):
                 )
                 if cr.get("success"):
                     contract_txid = cr.get("contract_txid")
+                # Anchor the layer-manifest Merkle root in global state too
+                # (key "<model_id>:l"), so it is readable without the indexer.
+                if layer_root:
+                    call_contract_register(
+                        client, PRIVATE_KEY, ADDRESS,
+                        app_id, f"{model_id[:60]}:l", layer_root,
+                    )
         except Exception as ce:
             # Contract call failure must NOT block registration
             print(f"[contract] Non-fatal: {ce}")
@@ -156,7 +215,7 @@ def broadcast_hash_to_algorand(model_id, model_name, model_hash, owner):
         }
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": _friendly_algo_error(e)}
 
 
 # ── 2. Live transaction lookup ─────────────────────────────────────────
@@ -205,7 +264,7 @@ def get_transaction_info(txid: str) -> dict:
         }
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": _friendly_algo_error(e)}
 
 
 # ── 3. Wallet / account info ───────────────────────────────────────────
@@ -247,7 +306,7 @@ def get_wallet_info() -> dict:
     except requests.Timeout:
         return {"success": False, "error": "AlgoNode timed out (>8s). Check your internet connection."}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": _friendly_algo_error(e)}
 
 
 # ── 4. Live Algorand network stats ─────────────────────────────────────
@@ -280,7 +339,7 @@ def get_network_stats() -> dict:
         }
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": _friendly_algo_error(e)}
 
 
 # ── 5. Transaction history ledger ──────────────────────────────────────
@@ -320,6 +379,17 @@ def get_transaction_ledger(limit: int = 50) -> dict:
                 try:
                     decoded = base64.b64decode(raw_note).decode("utf-8")
                     meta = json.loads(decoded)
+                    if isinstance(meta, dict) and meta.get("ps") == 1:
+                        # PhotoShield note (additive branch): label it instead of showing a
+                        # blank model row. Model notes take the unchanged path below.
+                        entry["action"]     = "photo-anchor"
+                        entry["photo_id"]   = meta.get("id") or meta.get("pmr", "")[:16]
+                        entry["model_name"] = "PhotoShield album" if "pmr" in meta else "PhotoShield photo"
+                        entry["model_id"]   = entry["photo_id"]
+                        entry["model_hash"] = (meta.get("o") or meta.get("pmr") or "")[:16] + "..."
+                        entry["owner"]      = (meta.get("pk") or "")[:16]
+                        ledger.append(entry)
+                        continue
                     entry["model_name"] = meta.get("name", "")
                     entry["model_id"]   = meta.get("id", "")
                     entry["model_hash"] = meta.get("hash", "")[:16] + "..."
@@ -346,4 +416,127 @@ def get_transaction_ledger(limit: int = 50) -> dict:
     except requests.Timeout:
         return {"success": False, "error": "Indexer timed out (>12s)"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": _friendly_algo_error(e)}
+
+
+# ── 7. FedVerify: anchor a federated round root (additive, Phase 3) ────
+#
+# Additive only: this does not touch broadcast_hash_to_algorand or any existing
+# path. A federated round commits a Merkle root over that round's client-update
+# digests. The leaf COUNT is anchored beside the root because duplicate-last
+# Merkle trees are ambiguous without it (CVE-2012-2459-style), exactly as the
+# layer-manifest anchor does with "lmr"/"lc".
+
+def broadcast_fl_round(run_id: str, round_num: int, round_root: str,
+                       leaf_count: int, wait: bool = True) -> dict:
+    """
+    Send a 0-ALGO self-transaction whose note commits one federated round.
+
+    Note keys:  "frr" federated round root · "flc" leaf count ·
+                "rnd" round number · "run" run id
+
+    Returns {"success", "txid", "round", "fee", "bytes_written"} or
+            {"success": False, "error": ...} — same envelope as the rest of this module.
+    """
+    try:
+        if not round_root or len(round_root) != 64:
+            return {"success": False, "error": "Invalid round root — expected 64-char hex."}
+
+        info = client.account_info(ADDRESS)
+        if info.get("amount", 0) < 1000:
+            return {
+                "success": False,
+                "error": (f"Wallet empty! Fund {ADDRESS} at "
+                          "https://bank.testnet.algorand.network/"),
+            }
+
+        params = client.suggested_params()
+        note = json.dumps({
+            "frr": round_root,
+            "flc": int(leaf_count),
+            "rnd": int(round_num),
+            "run": str(run_id),
+        }, separators=(",", ":")).encode()
+
+        txn = PaymentTxn(sender=ADDRESS, sp=params, receiver=ADDRESS, amt=0, note=note)
+        signed = txn.sign(PRIVATE_KEY)
+        txid = client.send_transaction(signed)
+
+        confirmed_round = None
+        if wait:
+            for _ in range(15):
+                txinfo = client.pending_transaction_info(txid)
+                if txinfo.get("confirmed-round", 0) > 0:
+                    confirmed_round = txinfo["confirmed-round"]
+                    break
+                time.sleep(1)
+            if not confirmed_round:
+                return {"success": False, "error": "Tx sent but confirmation timed out."}
+
+        return {
+            "success": True,
+            "txid": txid,
+            "round": confirmed_round,
+            "fee": int(getattr(params, "min_fee", 1000)),
+            "bytes_written": len(note),
+        }
+
+    except Exception as e:
+        return {"success": False, "error": _friendly_algo_error(e)}
+
+
+# ── 8. PhotoShield: anchor a photo or album note (additive, PHOTOSHIELD_DESIGN.md §6.7) ──
+#
+# Additive only: no existing function changes. A photo note is a 0-ALGO self-payment whose
+# note is compact JSON beginning with {"ps":1, (photoshield/chain/notes.py fixes the key
+# order). It NEVER calls the smart contract: the TEAL app has 64 global slots in total and
+# they belong to model registrations.
+
+PHOTO_NOTE_PREFIX = b'{"ps":1,'
+PHOTO_NOTE_MAX = 1024
+
+
+def broadcast_photo_anchor(note: dict, wait: bool = True) -> dict:
+    """Send one PhotoShield note. Returns the same envelope as broadcast_fl_round."""
+    try:
+        raw = json.dumps(note, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+        if not raw.startswith(PHOTO_NOTE_PREFIX):
+            return {"success": False, "error": 'A photo note must start with {"ps":1,'}
+        if len(raw) > PHOTO_NOTE_MAX:
+            return {"success": False,
+                    "error": f"Note is {len(raw)} bytes; Algorand allows {PHOTO_NOTE_MAX}."}
+
+        info = client.account_info(ADDRESS)
+        if info.get("amount", 0) < 1000:
+            return {
+                "success": False,
+                "error": (f"Wallet empty! Fund {ADDRESS} at "
+                          "https://bank.testnet.algorand.network/"),
+            }
+
+        params = client.suggested_params()
+        txn = PaymentTxn(sender=ADDRESS, sp=params, receiver=ADDRESS, amt=0, note=raw)
+        signed = txn.sign(PRIVATE_KEY)
+        txid = client.send_transaction(signed)
+
+        confirmed_round = None
+        if wait:
+            for _ in range(15):
+                txinfo = client.pending_transaction_info(txid)
+                if txinfo.get("confirmed-round", 0) > 0:
+                    confirmed_round = txinfo["confirmed-round"]
+                    break
+                time.sleep(1)
+            if not confirmed_round:
+                return {"success": False, "error": "Tx sent but confirmation timed out."}
+
+        return {
+            "success": True,
+            "txid": txid,
+            "round": confirmed_round,
+            "fee": int(getattr(params, "min_fee", 1000)),
+            "bytes_written": len(raw),
+        }
+
+    except Exception as e:
+        return {"success": False, "error": _friendly_algo_error(e)}

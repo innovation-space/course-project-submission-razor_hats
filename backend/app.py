@@ -22,6 +22,8 @@ import json
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from auth import auth_bp, require_auth
+from fl_routes import fl_bp          # Phase 3: federated round commitments (additive)
+from photo_routes import photo_bp    # PhotoShield: photo provenance (additive)
 import algorand_client
 import bitcoin_client
 from time import time
@@ -34,6 +36,37 @@ import hashlib
 app = Flask(__name__)
 CORS(app, origins="*", supports_credentials=True)
 app.register_blueprint(auth_bp)
+app.register_blueprint(fl_bp)
+app.register_blueprint(photo_bp)
+
+# Layer order is SEMANTIC for tamper detection (reordering = altered execution
+# graph). Flask sorts JSON keys alphabetically by default, which would destroy
+# the registered order of layerHashes in every response — disable that.
+app.json.sort_keys = False
+
+# ------------------------------------------------------------------ #
+#  Real-time alerts (Flask-SocketIO)                                  #
+#  Optional dependency — the app degrades gracefully if missing so    #
+#  tests / minimal deploys still run. Uses pure-Python threading mode  #
+#  (+ simple-websocket) so no C-extensions are required.              #
+# ------------------------------------------------------------------ #
+try:
+    from flask_socketio import SocketIO
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+    SOCKETIO_AVAILABLE = True
+except ImportError:
+    socketio = None
+    SOCKETIO_AVAILABLE = False
+
+
+def emit_alert(event: str, payload: dict) -> None:
+    """Broadcast a real-time event to all connected clients (no-op if SocketIO is unavailable)."""
+    if socketio is None:
+        return
+    try:
+        socketio.emit(event, payload)
+    except Exception as e:                       # never let a broadcast break the request
+        print(f"[socketio] emit failed (non-fatal): {e}")
 
 # Persistence file paths
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -114,7 +147,8 @@ def _get_pow_chain():
             vtx = {
                 "type": "verify",
                 "model_id": model_id,
-                "result": log.get("result", "unknown"),
+                # verification_logs store `isValid`; expose a clear result for chain consumers
+                "result": "valid" if log.get("isValid") else "invalid",
                 "timestamp": log.get("timestamp", 0),
             }
             bc.pending_transactions.append(vtx)
@@ -209,9 +243,16 @@ def register_model():
 
         model_id = generate_model_id(data["modelName"], data["modelHash"], owner)
 
+        # ── Trustless manifest commitment: MerkleRoot(Λ, π) anchored on-chain ──
+        layer_root, _, _ = compute_layer_merkle(
+            data.get("layerHashes") or {}, data.get("layerOrder")
+        )
+
         # ── Algorand Migration: Broadcast to Global Testnet ──
         algo_resp = algorand_client.broadcast_hash_to_algorand(
-            model_id, data["modelName"], data["modelHash"], owner
+            model_id, data["modelName"], data["modelHash"], owner,
+            layer_root=layer_root,
+            layer_count=len(data.get("layerHashes") or {}),
         )
         
         if not algo_resp.get("success"):
@@ -227,6 +268,10 @@ def register_model():
             "blockIndex": algo_resp.get("round"),
             "algoTxId": algo_resp.get("txid"),
             "layerHashes": data.get("layerHashes", {}), # For Deep Layer Inspection
+            # Explicit, signed layer sequence — reorder detection must NOT rely on
+            # JSON object key order (RFC 8259 declares objects unordered).
+            "layerOrder": data.get("layerOrder") or list((data.get("layerHashes") or {}).keys()),
+            "layerMerkleRoot": layer_root,   # also inside the on-chain note ("lmr")
             "currentVersion": 1,
             "isActive": True,
             "versions": [
@@ -309,6 +354,16 @@ def verify_model():
         )
         save_state()
 
+        # ── Real-time broadcast to ALL connected clients (Live Alerts feed) ──
+        emit_alert("verification_alert", {
+            "modelId":   data["modelId"],
+            "modelName": model["modelName"],
+            "verifier":  verifier,
+            "isValid":   is_valid,
+            "status":    "PASS" if is_valid else "TAMPERED",
+            "timestamp": int(time()),
+        })
+
         return jsonify(
             {
                 "success": True,
@@ -321,8 +376,92 @@ def verify_model():
                 "storedHash": model["modelHash"],
                 "providedHash": data["providedHash"],
                 "layerHashes": model.get("layerHashes", {}) if not is_valid else {},
+                "layerOrder": (model.get("layerOrder") or list(model.get("layerHashes", {}).keys())) if not is_valid else [],
             }
         ), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/verify-batch", methods=["POST"])
+@require_auth
+def verify_batch():
+    """
+    Verify a whole repository of model files in one request.
+
+    Body: { "files": [ {"filename": "...", "hash": "<sha256>"}, ... ] }  (max 20)
+
+    For each file the hash is checked against the registry and classified:
+      - "verified"     → hash matches a registered model's current or historical hash
+      - "tampered"     → filename matches a registered model name but the hash does NOT
+      - "unregistered" → no match at all
+    Read-only: no blockchain writes, no audit logging (this is a fast scan).
+    """
+    try:
+        data  = request.get_json() or {}
+        files = data.get("files", [])
+        if not isinstance(files, list) or not files:
+            return jsonify({"success": False, "error": "Provide a non-empty 'files' list of {filename, hash}."}), 400
+        if len(files) > 20:
+            return jsonify({"success": False, "error": "Batch limit is 20 files per request."}), 400
+
+        # One batch counts as a single write-quota operation
+        allowed, err = check_rate_limit(g.user)
+        if not allowed:
+            return jsonify({"success": False, "error": err}), 429
+
+        def _norm(s: str) -> str:
+            return "".join(c for c in (s or "").lower() if c.isalnum())
+
+        # Build lookups once
+        by_current, by_version, by_name = {}, {}, {}
+        for m in models_registry.values():
+            ch = (m.get("modelHash") or "").lower()
+            if ch:
+                by_current.setdefault(ch, m)
+            for v in m.get("versions", []):
+                vh = (v.get("hash") or "").lower()
+                if vh:
+                    by_version.setdefault(vh, (m, v.get("version")))
+            nm = _norm(m.get("modelName", ""))
+            if nm:
+                by_name.setdefault(nm, m)
+
+        results = []
+        summary = {"verified": 0, "tampered": 0, "unregistered": 0}
+        for f in files:
+            fname = str(f.get("filename") or "file")
+            h     = str(f.get("hash") or "").strip().lower()
+            entry = {"filename": fname, "hash": h}
+
+            m = by_current.get(h) if h else None
+            vm = by_version.get(h) if (h and not m) else None
+            if m:
+                entry.update(status="verified", modelId=m["modelId"], modelName=m.get("modelName"),
+                             owner=m.get("owner"), version=m.get("currentVersion"),
+                             message="Matches the registered model hash")
+                summary["verified"] += 1
+            elif vm:
+                model, ver = vm
+                entry.update(status="verified", modelId=model["modelId"], modelName=model.get("modelName"),
+                             owner=model.get("owner"), version=ver,
+                             message=f"Matches registered version v{ver}")
+                summary["verified"] += 1
+            else:
+                base  = _norm(fname.rsplit(".", 1)[0])
+                named = by_name.get(base) if base else None
+                if named:
+                    entry.update(status="tampered", modelId=named["modelId"], modelName=named.get("modelName"),
+                                 owner=named.get("owner"),
+                                 message="Filename matches a registered model but the hash does NOT — possible tampering")
+                    summary["tampered"] += 1
+                else:
+                    entry.update(status="unregistered", message="No matching hash found in the registry")
+                    summary["unregistered"] += 1
+            results.append(entry)
+
+        return jsonify({"success": True, "results": results, "summary": summary, "total": len(results)}), 200
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -446,6 +585,53 @@ def get_model(model_id):
     if not model:
         return jsonify({"success": False, "error": "Model not found"}), 404
     return jsonify({"success": True, "model": model}), 200
+
+
+@app.route("/api/manifest-proof/<model_id>", methods=["GET"])
+def manifest_proof(model_id):
+    """
+    Merkle inclusion proofs for the layer manifest — the trustless-localization
+    protocol. The client:
+      1. fetches the registration tx note DIRECTLY from the public Algorand
+         indexer and extracts the anchored root ("lmr") + leaf count ("lc");
+      2. recomputes each leaf  SHA-256(JSON([i, name, layerHash]))  from the
+         manifest served here (untrusted data);
+      3. folds each sibling path and checks it reaches the on-chain root.
+    A malicious server cannot forge a manifest that passes step 3 without a
+    SHA-256 second preimage — verification does not trust this endpoint.
+    """
+    model = models_registry.get(model_id)
+    if not model:
+        return jsonify({"success": False, "error": "Model not found"}), 404
+    layer_hashes = model.get("layerHashes") or {}
+    if not layer_hashes:
+        return jsonify({"success": False, "error": "No layer manifest registered for this model"}), 404
+
+    root, leaves, order = compute_layer_merkle(layer_hashes, model.get("layerOrder"))
+    proofs = [
+        {
+            "index": i,
+            "name": name,
+            "layerHash": layer_hashes[name],
+            "proof": merkle_inclusion_proof(leaves, i),
+        }
+        for i, name in enumerate(order)
+    ]
+    txid = model.get("algoTxId") or ""
+    return jsonify({
+        "success": True,
+        "modelId": model_id,
+        "merkleRoot": root,
+        "layerCount": len(order),
+        "order": order,
+        "proofs": proofs,
+        "anchor": {
+            "algoTxId": txid,
+            "noteFields": {"root": "lmr", "leafCount": "lc"},
+            "storedRoot": model.get("layerMerkleRoot"),
+            "indexerUrl": f"https://testnet-idx.algonode.cloud/v2/transactions/{txid}" if txid else None,
+        },
+    }), 200
 
 
 @app.route("/api/versions/<model_id>", methods=["GET"])
@@ -1178,6 +1364,187 @@ def download_report(model_id):
     )
 
 
+@app.route("/api/certificate/<model_id>", methods=["POST"])
+def generate_certificate(model_id):
+    """
+    Generate a professional, dark-themed PDF *certificate* using ReportLab.
+
+    Contains: model name, SHA-256 hash, owner, registration date, the Algorand
+    TxID rendered as a scannable QR code (links to the explorer), and a
+    "Verified on Algorand Testnet" badge. Returns the PDF as an attachment.
+
+    NB: styled to match the app's current "signal" brand (electric-green on a
+    cool-black) rather than the original purple, so the certificate matches the
+    live UI.
+    """
+    try:
+        import io
+        from datetime import datetime, timezone
+        from flask import Response
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.colors import HexColor, white
+        from reportlab.graphics.barcode import qr
+        from reportlab.graphics.shapes import Drawing
+        from reportlab.graphics import renderPDF
+
+        model = models_registry.get(model_id)
+        if not model:
+            return jsonify({"success": False, "error": "Model not found"}), 404
+
+        # ── Brand palette (cool-black + signal green/blue) ──
+        BG    = HexColor("#06080c"); PANEL = HexColor("#10151f")
+        GREEN = HexColor("#00e5a0"); BLUE  = HexColor("#5b8cff")
+        TEXT  = HexColor("#eef2f8"); MUTED = HexColor("#8a94a6")
+        LINE  = HexColor("#222c3a"); HAIR  = HexColor("#161d28")
+        GTINT = HexColor("#06140f")
+
+        # ── Data ──
+        name  = str(model.get("modelName", "Unknown Model"))
+        mhash = str(model.get("modelHash", "—"))
+        owner = str(model.get("owner", "—"))
+        txid  = str(model.get("algoTxId") or "")
+        ts    = model.get("registeredAt")
+        reg_date = (datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%B %d, %Y · %H:%M UTC")
+                    if ts else "Pending confirmation")
+        explorer = (f"https://lora.algokit.io/testnet/transaction/{txid}"
+                    if txid else "https://lora.algokit.io/testnet")
+
+        def ascii_safe(s):  # core PDF fonts are latin-1
+            return s.encode("latin-1", "replace").decode("latin-1")
+        name, owner, reg_date = map(ascii_safe, (name, owner, reg_date))
+
+        W, H = letter                      # 612 x 792 pts
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=letter, pageCompression=1)
+        c.setTitle(f"BlockVerify Certificate — {name}")
+        cx = W / 2.0
+
+        # ── Background + frames ──
+        c.setFillColor(BG);   c.rect(0, 0, W, H, fill=1, stroke=0)
+        mg = 34
+        c.setStrokeColor(LINE); c.setLineWidth(1.4)
+        c.roundRect(mg, mg, W - 2*mg, H - 2*mg, 16, fill=0, stroke=1)
+        c.setStrokeColor(HAIR); c.setLineWidth(0.8)
+        c.roundRect(mg + 8, mg + 8, W - 2*mg - 16, H - 2*mg - 16, 12, fill=0, stroke=1)
+
+        # corner accents
+        def corner(x, y, dx, dy):
+            c.setStrokeColor(GREEN); c.setLineWidth(2)
+            c.line(x, y, x + dx, y); c.line(x, y, x, y + dy)
+        corner(mg + 8, H - mg - 8, 22, -22);  corner(W - mg - 8, H - mg - 8, -22, -22)
+        corner(mg + 8, mg + 8, 22, 22);       corner(W - mg - 8, mg + 8, -22, 22)
+
+        # ── Header wordmark with check mark ──
+        ly = H - 78
+        c.setFillColor(GREEN); c.roundRect(cx - 96, ly - 6, 26, 26, 6, fill=1, stroke=0)
+        c.setStrokeColor(BG); c.setLineWidth(2.6)
+        c.line(cx - 90, ly + 6, cx - 86, ly + 2); c.line(cx - 86, ly + 2, cx - 78, ly + 13)
+        c.setFont("Helvetica-Bold", 17)
+        c.setFillColor(TEXT); c.drawString(cx - 62, ly + 2, "Block")
+        c.setFillColor(GREEN); c.drawString(cx - 62 + c.stringWidth("Block", "Helvetica-Bold", 17), ly + 2, "Verify")
+
+        # ── Title ──
+        c.setFillColor(TEXT); c.setFont("Helvetica-Bold", 26)
+        c.drawCentredString(cx, H - 150, "CERTIFICATE OF INTEGRITY")
+        c.setStrokeColor(GREEN); c.setLineWidth(2); c.line(cx - 64, H - 160, cx + 64, H - 160)
+        c.setFillColor(MUTED); c.setFont("Helvetica", 9.5)
+        c.drawCentredString(cx, H - 178, "Cryptographic attestation that this AI model is registered and tamper-evident")
+        c.drawCentredString(cx, H - 191, "on a live, public blockchain ledger.")
+
+        # ── Verified badge pill ──
+        badge = "VERIFIED ON ALGORAND TESTNET"
+        c.setFont("Helvetica-Bold", 9)
+        bw = c.stringWidth(badge, "Helvetica-Bold", 9) + 50
+        bh = 22; bx = cx - bw/2; by = H - 230
+        c.setFillColor(GTINT); c.setStrokeColor(GREEN); c.setLineWidth(1)
+        c.roundRect(bx, by, bw, bh, 11, fill=1, stroke=1)
+        c.setFillColor(GREEN); c.circle(bx + 16, by + bh/2, 5.5, fill=1, stroke=0)
+        c.setStrokeColor(BG); c.setLineWidth(1.5)
+        c.line(bx + 13, by + bh/2, bx + 15, by + bh/2 - 2.5); c.line(bx + 15, by + bh/2 - 2.5, bx + 19, by + bh/2 + 2.5)
+        c.setFillColor(GREEN); c.setFont("Helvetica-Bold", 9)
+        c.drawCentredString(cx + 9, by + bh/2 - 3.2, badge)
+
+        # ── Model name ──
+        c.setFillColor(MUTED); c.setFont("Helvetica-Bold", 8); c.drawCentredString(cx, H - 264, "ISSUED FOR THE MODEL")
+        c.setFillColor(TEXT); c.setFont("Helvetica-Bold", 22)
+        disp = name if c.stringWidth(name, "Helvetica-Bold", 22) < (W - 170) else (name[:38] + "…")
+        c.drawCentredString(cx, H - 290, disp)
+
+        # ── Details panel ──
+        px = mg + 30; pw = W - 2*(mg + 30); py = 248; ph = 196
+        c.setFillColor(PANEL); c.setStrokeColor(LINE); c.setLineWidth(1)
+        c.roundRect(px, py, pw, ph, 12, fill=1, stroke=1)
+
+        lx = px + 24
+        # SHA-256 fingerprint (wrapped 2 x 32)
+        c.setFillColor(MUTED); c.setFont("Helvetica-Bold", 7.5); c.drawString(lx, py + ph - 24, "SHA-256 FINGERPRINT")
+        c.setFillColor(GREEN); c.setFont("Courier", 9.5)
+        c.drawString(lx, py + ph - 39, mhash[:32]); c.drawString(lx, py + ph - 52, mhash[32:64])
+
+        def field(y, label, value, mono=False, color=TEXT, vsize=10.5):
+            c.setFillColor(MUTED); c.setFont("Helvetica-Bold", 7.5); c.drawString(lx, y, label)
+            c.setFillColor(color); c.setFont("Courier" if mono else "Helvetica", vsize)
+            c.drawString(lx, y - 14, value)
+
+        field(py + ph - 78,  "REGISTERED OWNER", owner)
+        field(py + ph - 118, "REGISTRATION DATE", reg_date)
+        tx_disp = (txid[:22] + "…" + txid[-6:]) if len(txid) > 30 else (txid or "Pending on-chain confirmation")
+        field(py + ph - 158, "ALGORAND TRANSACTION ID", tx_disp, mono=True, color=BLUE, vsize=9)
+
+        # ── QR code on a white card (right side of panel) ──
+        qsize = 116; qpad = 11
+        qcard_x = px + pw - (qsize + 2*qpad) - 22
+        qcard_y = py + (ph - (qsize + 2*qpad)) / 2.0
+        c.setFillColor(white); c.roundRect(qcard_x, qcard_y, qsize + 2*qpad, qsize + 2*qpad, 8, fill=1, stroke=0)
+        qwidget = qr.QrCodeWidget(explorer)
+        b = qwidget.getBounds(); bw_, bh_ = b[2] - b[0], b[3] - b[1]
+        d = Drawing(qsize, qsize, transform=[qsize / bw_, 0, 0, qsize / bh_, 0, 0])
+        d.add(qwidget)
+        renderPDF.draw(d, c, qcard_x + qpad, qcard_y + qpad)
+        c.setFillColor(MUTED); c.setFont("Helvetica", 7)
+        c.drawCentredString(qcard_x + (qsize + 2*qpad) / 2.0, qcard_y - 12, "Scan to verify on Algorand Explorer")
+
+        # ── Hexagonal authenticity seal (balances the lower band) ──
+        import math
+        def hexagon(x0, y0, r):
+            return [(x0 + r*math.cos(math.pi/2 + i*math.pi/3),
+                     y0 + r*math.sin(math.pi/2 + i*math.pi/3)) for i in range(6)]
+        sx, sy = cx, 176
+        for rr, col, wdt in ((42, GREEN, 1.6), (35, HexColor("#0d4a37"), 1.0)):
+            pts = hexagon(sx, sy, rr)
+            path = c.beginPath(); path.moveTo(*pts[0])
+            for p in pts[1:]:
+                path.lineTo(*p)
+            path.close()
+            c.setStrokeColor(col); c.setLineWidth(wdt); c.drawPath(path, fill=0, stroke=1)
+        # check mark inside
+        c.setStrokeColor(GREEN); c.setLineWidth(3)
+        c.line(sx - 13, sy + 2, sx - 4, sy - 8); c.line(sx - 4, sy - 8, sx + 14, sy + 13)
+        c.setFillColor(GREEN); c.setFont("Helvetica-Bold", 6.5)
+        c.drawCentredString(sx, sy + 50, "INTEGRITY SEAL")
+        c.setFillColor(MUTED); c.setFont("Helvetica", 6)
+        c.drawCentredString(sx, sy - 56, "IMMUTABLE  ·  PUBLICLY VERIFIABLE  ·  TAMPER-EVIDENT")
+
+        # ── Footer ──
+        c.setStrokeColor(LINE); c.setLineWidth(0.8); c.line(mg + 30, 96, W - mg - 30, 96)
+        gen = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        c.setFillColor(MUTED); c.setFont("Helvetica", 8)
+        c.drawCentredString(cx, 80, f"Issued {gen}  ·  SHA-256 fingerprint  ·  Algorand Pure-Proof-of-Stake  ·  blockverify.app")
+        c.setFillColor(HexColor("#5b6678")); c.setFont("Helvetica-Oblique", 7)
+        c.drawCentredString(cx, 67, "This certificate attests to an immutable on-chain record. Re-verify any time by re-hashing the model file.")
+
+        c.showPage(); c.save(); buf.seek(0)
+        filename = f"blockverify_certificate_{model_id[:8]}.pdf"
+        return Response(
+            buf.getvalue(),
+            mimetype="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 
 
 
@@ -1187,6 +1554,54 @@ def download_report(model_id):
 # ------------------------------------------------------------------ #
 #  Merkle tree helper                                                  #
 # ------------------------------------------------------------------ #
+
+# ── Trustless layer-manifest commitment (Merkle over Λ and π jointly) ──
+# Leaf i binds POSITION + NAME + LAYER-HASH:  leaf_i = SHA-256(JSON([i, ℓᵢ, Λ(ℓᵢ)]))
+# so any reordering changes the leaves and therefore the root. The JSON encoding
+# (compact separators, ensure_ascii=False) is byte-identical to JavaScript's
+# JSON.stringify for the same values — the browser recomputes leaves independently.
+
+def _manifest_leaf(index: int, name: str, layer_hash: str) -> str:
+    enc = json.dumps([index, name, layer_hash],
+                     separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(enc).hexdigest()
+
+
+def _manifest_order(layer_hashes: dict, layer_order) -> list:
+    """Explicit signed order first, filtered to the manifest; stragglers keep key order."""
+    order = [n for n in (layer_order or []) if n in layer_hashes]
+    seen = set(order)
+    return order + [n for n in layer_hashes if n not in seen]
+
+
+def compute_layer_merkle(layer_hashes: dict, layer_order=None):
+    """Return (root, leaves, order) for the ordered manifest; (None, [], []) if empty."""
+    order = _manifest_order(layer_hashes or {}, layer_order)
+    leaves = [_manifest_leaf(i, n, layer_hashes[n]) for i, n in enumerate(order)]
+    if not leaves:
+        return None, [], []
+    level = leaves[:]
+    while len(level) > 1:
+        if len(level) % 2:
+            level.append(level[-1])          # duplicate-last; leaf count is anchored on-chain
+        level = [hashlib.sha256((level[i] + level[i + 1]).encode()).hexdigest()
+                 for i in range(0, len(level), 2)]
+    return level[0], leaves, order
+
+
+def merkle_inclusion_proof(leaves: list, index: int) -> list:
+    """Sibling path from leaf `index` to the root: [{"hash": hex, "right": bool}, ...]."""
+    proof, level, idx = [], leaves[:], index
+    while len(level) > 1:
+        if len(level) % 2:
+            level.append(level[-1])
+        sib = idx ^ 1
+        proof.append({"hash": level[sib], "right": sib > idx})
+        level = [hashlib.sha256((level[i] + level[i + 1]).encode()).hexdigest()
+                 for i in range(0, len(level), 2)]
+        idx //= 2
+    return proof
+
 
 def _tx_hash(tx: dict) -> str:
     """SHA-256 of a deterministic JSON representation of a transaction."""
@@ -1368,75 +1783,212 @@ def bitcoin_anchor():
 #  AI Chat Assistant Endpoint                                          #
 # ------------------------------------------------------------------ #
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# ── Gemini assistant ────────────────────────────────────────────────────────
+# Keys come from the environment only, as a POOL so one exhausted key does not take the
+# assistant down. See backend/gemini_keys.py; nothing here ever logs or returns a raw key.
+from gemini_keys import KeyPool, mask
 
-# Comprehensive System Persona detailing the entire project
+GEMINI_KEYS = KeyPool()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# When every key is quota-limited on the primary model, fall back to a cheaper one rather
+# than going dark. flash-lite has a much larger free-tier allowance.
+GEMINI_FALLBACK = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+GEMINI_TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "25"))
+
+MAX_MESSAGE_CHARS = 4000
+MAX_HISTORY_TURNS = 12          # keeps the prompt bounded and the cost predictable
+
+# Per-IP rate limit: this endpoint spends real quota, so it cannot be left open.
+_chat_rate = {}
+CHAT_RATE_MAX = 20              # requests
+CHAT_RATE_WINDOW = 60.0         # seconds
+
+
+def _chat_rate_ok(ip: str) -> bool:
+    now = time()
+    hits = [t for t in _chat_rate.get(ip, []) if now - t < CHAT_RATE_WINDOW]
+    if len(hits) >= CHAT_RATE_MAX:
+        _chat_rate[ip] = hits
+        return False
+    hits.append(now)
+    _chat_rate[ip] = hits
+    if len(_chat_rate) > 2000:                      # crude cap so this cannot grow forever
+        for k in list(_chat_rate)[:500]:
+            _chat_rate.pop(k, None)
+    return True
+
+
 BLOCKVERIFY_PERSONA = """
-You are the official BlockVerify AI Assistant. You are friendly, highly intelligent, and expert at explaining complex topics simply. 
-BlockVerify is a blockchain-powered AI Model Integrity Verification Platform created by three students: Shubhangam, Mihir, and Aditya.
-It solves the problem of "AI Supply Chain Attacks" (like backdoor weight poisoning) by cryptographically proving a model has not been tampered with.
+You are the BlockVerify assistant. BlockVerify is an AI-model integrity platform built by
+Shubhangam Singh, Aditya Kumar and Mihir Dixit (VIT, guide Dr. Kankana Roy).
 
-BlockVerify's 7-Layer Architecture:
-1. Custom PoW Blockchain: A from-scratch python blockchain to prove foundational understanding.
-2. Algorand Testnet: A fast L2 sidechain. We use a hand-written TEAL v8 smart contract to permanently store the mapping of 'model_id -> sha256_hash. We use 0-ALGO note transactions.
-3. Bitcoin Testnet (Rollup): An L1 settlement layer. We batch all model hashes into a Merkle Root and anchor it fully on-chain using an OP_RETURN transaction.
-4. Client-side Hashing: WebCrypto API extracts hashes without the model ever leaving the user's device.
-5. Deep Layer Forensics: A revolutionary inspector that extracts layer-by-layer neural network architecture. It detects two attacks: 'Weight Tampering' (modified deep learning parameters) and 'Topology Poisoning' (rogue layers injected by hackers).
-6. zkML (Zero-Knowledge): A simulated cryptographic prover demonstrating that we can verify ML execution without exposing private dataset weights.
-7. IPFS Self-Healing: A simulated remediation protocol that fetches uncorrupted genesis blocks from the InterPlanetary File System to replace compromised neural network hidden layers.
+WHAT IT DOES — two layers:
+1. Registration & verification of a FINISHED model. A model's file hash and an ordered
+   per-layer hash manifest are committed as a Merkle root, anchored on Algorand Testnet
+   (App ID 764828342) with Bitcoin Testnet OP_RETURN checkpoints. Re-uploading the file
+   later re-hashes it: any change flips a SHA-256 digest, so detection is sound and
+   complete. The browser verifies inclusion proofs against a root it reads directly from
+   the public Algorand indexer, so the server is not trusted at verification time.
+2. FedVerify — federated learning. Many parties train one model without sharing data.
+   Each round commits a Merkle root over the client update digests, and FedVerify-Forensics
+   screens Byzantine clients by applying BlockVerify's layer-level outlier probes ACROSS
+   clients instead of across weights. Differential privacy (Opacus, RDP accountant, sigma
+   solved over TOTAL steps) protects the data.
 
-Your goal: Educate users. If they ask what a tab does, explain it. If they ask about blockchain concepts (like what a Merkle tree is, what Algorand is, what OP_RETURN means), explain it clearly using analogies. Be concise, use emojis naturally, and format responses neatly.
-"""
+TABS: Register, Verify, Compare, Versions, Audit Trail, Live Alerts, My Models, Analytics,
+Registry, Explorer, Chain Proof, Ledger, Federated, Help & FAQ.
+
+HOW TO ANSWER:
+- Be concise and concrete. Two or three short paragraphs at most unless asked for detail.
+- Plain language first; name the mechanism second.
+- When a question maps to a tab or a command, say exactly which one.
+- Use markdown: **bold** for key terms, `code` for commands, - for lists.
+
+HONESTY RULES — these matter more than being helpful:
+- Never invent numbers, accuracy figures or results. If asked for results you do not have,
+  say the experiments are still running and point to the Federated tab or the tables.
+- State limitations when they are relevant: the statistical probes localize tampering but
+  can be evaded (the hash cannot); Byzantine screening is best-effort and the attacks
+  evaluated are non-adaptive; backdoor detection is weak; there is no automatic rollback;
+  differential privacy protects a training example, not a whole patient.
+- If you do not know, say so. Do not guess about this codebase.
+- You are a guide to this application. Decline unrelated requests briefly and redirect.
+""".strip()
+
+
+def _gemini_call(contents, temperature=0.7, max_tokens=900):
+    """POST to Gemini, rotating keys past quota errors. Returns (text, error, http_status)."""
+    import requests
+
+    if not GEMINI_KEYS.configured:
+        return None, ("The assistant is not configured on this server. Set GEMINI_API_KEYS "
+                      "in backend/.env (a comma-separated pool) and restart."), 503
+
+    payload = {
+        "contents": contents,
+        "systemInstruction": {"parts": [{"text": BLOCKVERIFY_PERSONA}]},
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+            "topP": 0.95,
+        },
+        # Let the model discuss attacks and poisoning: this is a security tool, and the
+        # default thresholds otherwise refuse legitimate questions about its own subject.
+        "safetySettings": [
+            {"category": c, "threshold": "BLOCK_ONLY_HIGH"} for c in (
+                "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH",
+                "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT")
+        ],
+    }
+
+    last_err, last_status = "", 502
+    models = [GEMINI_MODEL] + ([GEMINI_FALLBACK] if GEMINI_FALLBACK and
+                               GEMINI_FALLBACK != GEMINI_MODEL else [])
+    # Try every key on the primary model, then every key on the fallback. A free-tier key
+    # exhausts quickly, so degrading the model beats returning nothing.
+    attempts = [(m, i) for m in models for i in range(max(1, len(GEMINI_KEYS)))]
+    quota_hit = False
+    for model, _ in attempts:
+        key = GEMINI_KEYS.acquire()
+        if key is None:
+            if model != models[-1]:
+                GEMINI_KEYS.revive()          # give the pool a chance on the cheaper model
+                key = GEMINI_KEYS.acquire()
+            if key is None:
+                wait = GEMINI_KEYS.cooldown_remaining()
+                return None, (f"All API keys are rate-limited right now. Try again in about "
+                              f"{int(wait) + 1}s, or add more keys to GEMINI_API_KEYS."), 429
+        try:
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model}:generateContent?key={key.value}",
+                json=payload, headers={"Content-Type": "application/json"},
+                timeout=GEMINI_TIMEOUT)
+        except Exception as e:                       # network/timeout: bench briefly, rotate
+            GEMINI_KEYS.report(key, 503, str(e))
+            last_err, last_status = "The AI service did not respond in time.", 504
+            continue
+
+        if r.status_code == 200:
+            GEMINI_KEYS.report(key, 200)
+            data = r.json()
+            cand = (data.get("candidates") or [{}])[0]
+            parts = (cand.get("content") or {}).get("parts") or []
+            text = "".join(p.get("text", "") for p in parts).strip()
+            if text:
+                return text, None, 200
+            reason = cand.get("finishReason", "")
+            if reason == "SAFETY":
+                return None, "That question was blocked by the model's safety filter. Try rephrasing it.", 200
+            if reason == "MAX_TOKENS":
+                return None, "The answer was too long to finish. Ask something narrower.", 200
+            last_err, last_status = "The AI returned an empty response.", 502
+            continue
+
+        try:
+            msg = (r.json().get("error") or {}).get("message", "")
+        except Exception:
+            msg = r.text[:200]
+        GEMINI_KEYS.report(key, r.status_code, msg)
+        # Never surface the upstream message verbatim: it can echo the key in the URL.
+        if r.status_code == 429:
+            quota_hit = True
+            last_err, last_status = "Rate limited — rotating to another key.", 429
+        elif r.status_code in (401, 403):
+            last_err, last_status = "An API key was rejected (invalid or revoked).", 502
+        else:
+            last_err, last_status = f"The AI service returned an error ({r.status_code}).", 502
+
+    if quota_hit:
+        wait = GEMINI_KEYS.cooldown_remaining()
+        return None, (f"Every API key has hit its quota, on both {GEMINI_MODEL} and "
+                      f"{GEMINI_FALLBACK}. Try again in about {int(wait) + 1}s, or add "
+                      f"another key to GEMINI_API_KEYS in backend/.env."), 429
+    return None, (last_err or "The assistant is unavailable right now."), last_status
+
 
 @app.route("/api/chat", methods=["POST"])
 def chat_assistant():
-    """Gemini-powered chatbot endpoint for user assistance."""
-    try:
-        import requests
-        data = request.get_json() or {}
-        user_message = data.get("message", "").strip()
-        history = data.get("history", []) # List of {"role": "user"|"model", "text": "..."}
+    """Gemini-backed assistant with key rotation, rate limiting and bounded context."""
+    data = request.get_json(silent=True) or {}
+    user_message = str(data.get("message", "") or "").strip()
+    history = data.get("history", [])
 
-        if not user_message:
-            return jsonify({"success": False, "error": "Message is empty"}), 400
+    if not user_message:
+        return jsonify({"success": False, "error": "Message is empty."}), 400
+    if len(user_message) > MAX_MESSAGE_CHARS:
+        return jsonify({"success": False,
+                        "error": f"Message too long (limit {MAX_MESSAGE_CHARS} characters)."}), 400
+    if not isinstance(history, list):
+        return jsonify({"success": False, "error": "history must be a list."}), 400
 
-        # Build Gemini standard completion payload
-        contents = []
-        for msg in history:
-            role = "model" if msg.get("role") == "model" else "user"
-            contents.append({"role": role, "parts": [{"text": msg.get("text", "")}]})
-            
-        contents.append({"role": "user", "parts": [{"text": user_message}]})
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
+    if not _chat_rate_ok(ip):
+        return jsonify({"success": False,
+                        "error": "Too many messages. Please wait a minute."}), 429
 
-        payload = {
-            "contents": contents,
-            "systemInstruction": {
-                "role": "system",
-                "parts": [{"text": BLOCKVERIFY_PERSONA.strip()}]
-            },
-            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800}
-        }
+    contents = []
+    for msg in history[-MAX_HISTORY_TURNS:]:
+        if not isinstance(msg, dict):
+            continue
+        text = str(msg.get("text", "") or "")[:MAX_MESSAGE_CHARS]
+        if not text.strip():
+            continue
+        contents.append({"role": "model" if msg.get("role") == "model" else "user",
+                         "parts": [{"text": text}]})
+    contents.append({"role": "user", "parts": [{"text": user_message}]})
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
-        
-        if resp.status_code != 200:
-            error_data = resp.json()
-            ext_err = error_data.get("error", {}).get("message", "AI service temporarily unavailable")
-            return jsonify({"success": False, "error": f"Gemini API Error: {ext_err}"}), 500
-
-        resp_json = resp.json()
-        reply_text = resp_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-        
-        if not reply_text:
-            return jsonify({"success": False, "error": "AI returned an empty response"}), 500
-
-        return jsonify({"success": True, "reply": reply_text}), 200
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    reply, err, status = _gemini_call(contents)
+    if err:
+        return jsonify({"success": False, "error": err}), status
+    return jsonify({"success": True, "reply": reply}), 200
 
 
+@app.route("/api/chat/health", methods=["GET"])
+def chat_health():
+    """Key-pool health. Values are MASKED — this route must never expose a raw key."""
+    st = GEMINI_KEYS.status()
+    return jsonify({"success": True, "model": GEMINI_MODEL, **st}), 200
 
 
 # ------------------------------------------------------------------ #
@@ -1450,7 +2002,12 @@ if __name__ == "__main__":
     print("══════════════════════════════════════════════")
     print("  Ledger      : Algorand Testnet (AlgoNode)")
     print("  Settlement  : Bitcoin Testnet3 (OP_RETURN)")
+    print("  Real-time   : " + ("Flask-SocketIO (WebSocket) ✓" if SOCKETIO_AVAILABLE else "disabled (flask-socketio not installed)"))
     print("  Server      : http://localhost:5000")
     print("══════════════════════════════════════════════")
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=False, host="0.0.0.0", port=port)
+    if socketio is not None:
+        # allow_unsafe_werkzeug lets the threading-mode dev server run under `python app.py` on Render
+        socketio.run(app, debug=False, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
+    else:
+        app.run(debug=False, host="0.0.0.0", port=port)

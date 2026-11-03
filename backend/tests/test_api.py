@@ -23,6 +23,8 @@ def reset_state(monkeypatch):
     models_registry.clear()
     verification_logs.clear()
     _rate_log.clear()
+    # Drop any cached PoW chain so chain/Merkle tests start from a clean registry
+    app_module._invalidate_chain_cache()
 
     # Prevent tests from writing to the real JSON database
     monkeypatch.setattr(app_module, "save_state", lambda: None)
@@ -31,7 +33,7 @@ def reset_state(monkeypatch):
     global mock_algo_round
     mock_algo_round = 1000
 
-    def mock_broadcast(model_id, name, hash_val, owner):
+    def mock_broadcast(model_id, name, hash_val, owner, **kwargs):
         global mock_algo_round
         mock_algo_round += 1
         return {
@@ -93,6 +95,15 @@ def mine_pow(hash_val: str, difficulty: int = 3) -> int:
         if candidate.startswith(prefix):
             return nonce
         nonce += 1
+
+
+# Helper – return the first nonce that does NOT satisfy PoW (guaranteed-invalid)
+def invalid_pow(hash_val: str, difficulty: int = 3) -> int:
+    prefix = '0' * difficulty
+    nonce = 0
+    while hashlib.sha256(f"{hash_val}{nonce}".encode()).hexdigest().startswith(prefix):
+        nonce += 1
+    return nonce
 
 
 # Helper – register a model and return the parsed JSON
@@ -445,3 +456,452 @@ class TestSearch:
 # ═══════════════════════════════════════════════════════════════════
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Proof-of-Work anti-spam  (verify_pow + /api/register enforcement)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestProofOfWork:
+
+    def test_prefix_matches_difficulty(self):
+        assert app_module.POW_PREFIX == "0" * app_module.POW_DIFFICULTY
+
+    def test_verify_pow_accepts_valid_nonce(self):
+        h = "deadbeefcafe"
+        assert app_module.verify_pow(h, mine_pow(h)) is True
+
+    def test_verify_pow_rejects_invalid_nonce(self):
+        h = "deadbeefcafe"
+        assert app_module.verify_pow(h, invalid_pow(h)) is False
+
+    def test_verify_pow_hash_construction(self):
+        # Must hash exactly model_hash + str(nonce) and compare against the prefix
+        h, nonce = "xyz", 12345
+        digest = hashlib.sha256(f"{h}{nonce}".encode()).hexdigest()
+        assert app_module.verify_pow(h, nonce) == digest.startswith(app_module.POW_PREFIX)
+
+    def test_register_rejects_invalid_pow(self, client):
+        h = "powhashbad"
+        resp = client.post("/api/register", json={
+            "modelName": "M", "modelHash": h, "owner": "alice", "powNonce": invalid_pow(h),
+        })
+        assert resp.status_code == 400
+        assert "Proof-of-Work" in resp.get_json()["error"]
+
+    def test_register_accepts_valid_pow(self, client):
+        h = "powhashgood"
+        resp = client.post("/api/register", json={
+            "modelName": "M", "modelHash": h, "owner": "alice", "powNonce": mine_pow(h),
+        })
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Local PoW-chain cache  (_get_pow_chain / _invalidate_chain_cache)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestChainCache:
+
+    def test_cached_chain_is_reused(self, client):
+        c1 = app_module._get_pow_chain()
+        c2 = app_module._get_pow_chain()
+        assert c1 is c2, "second call should return the cached object, not rebuild"
+
+    def test_invalidation_forces_rebuild(self, client):
+        c1 = app_module._get_pow_chain()
+        app_module._invalidate_chain_cache()
+        c2 = app_module._get_pow_chain()
+        assert c1 is not c2, "after invalidation the chain must be rebuilt"
+
+    def test_empty_registry_is_genesis_only(self, client):
+        chain = app_module._get_pow_chain()
+        assert len(chain) == 1, "no models → genesis block only"
+
+    def test_new_registration_grows_chain_after_invalidation(self, client):
+        before = len(app_module._get_pow_chain())
+        _register(client, name="CacheModel", hash_val="cachehash", owner="alice")
+        app_module._invalidate_chain_cache()   # save_state() does this in production
+        after = len(app_module._get_pow_chain())
+        assert after > before, "registering a model must add at least one block"
+
+    def test_chain_endpoint_reflects_registry(self, client):
+        _register(client, name="ChainModel", hash_val="chainhash", owner="alice")
+        app_module._invalidate_chain_cache()
+        data = client.get("/api/chain").get_json()
+        assert data["success"] is True
+        # genesis + at least the registration block
+        assert len(data["chain"]) >= 2
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Merkle tree endpoints  (/api/algo/merkle  &  /api/block/<i>/merkle)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestMerkle:
+
+    def test_algo_merkle_empty(self, client):
+        data = client.get("/api/algo/merkle").get_json()
+        assert data["success"] is True
+        assert data["count"] == 0
+        assert data["merkleRoot"] is None
+
+    def test_algo_merkle_with_models(self, client):
+        _register(client, name="A", hash_val="hashA", owner="alice")
+        _register(client, name="B", hash_val="hashB", owner="alice")
+        data = client.get("/api/algo/merkle").get_json()
+        assert data["count"] == 2
+        assert data["merkleRoot"] is not None
+        assert len(data["merkleRoot"]) == 64       # SHA-256 hex digest
+        assert data["tree"] is not None
+
+    def test_algo_merkle_is_deterministic(self, client):
+        _register(client, name="A", hash_val="hashA", owner="alice")
+        r1 = client.get("/api/algo/merkle").get_json()["merkleRoot"]
+        r2 = client.get("/api/algo/merkle").get_json()["merkleRoot"]
+        assert r1 == r2, "same registry must yield the same Merkle root"
+
+    def test_algo_merkle_tamper_changes_root(self, client):
+        d = _register(client, name="A", hash_val="hashA", owner="alice").get_json()
+        root_before = client.get("/api/algo/merkle").get_json()["merkleRoot"]
+        # Mutate a single stored hash — the root MUST change (tamper-evidence)
+        models_registry[d["modelId"]]["modelHash"] = "TAMPERED_HASH"
+        root_after = client.get("/api/algo/merkle").get_json()["merkleRoot"]
+        assert root_before != root_after
+
+    def test_block_merkle_genesis(self, client):
+        data = client.get("/api/block/0/merkle").get_json()
+        assert data["success"] is True
+        assert data["blockIndex"] == 0
+        assert len(data["merkleRoot"]) == 64
+        assert data["tree"] is not None
+
+    def test_block_merkle_out_of_range(self, client):
+        resp = client.get("/api/block/9999/merkle")
+        assert resp.status_code == 404
+        assert resp.get_json()["success"] is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Real-time alerts  (Flask-SocketIO verification_alert broadcast)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestRealtimeAlerts:
+    """Verify that /api/verify broadcasts a live alert to connected clients."""
+
+    def _sio_client(self):
+        if not getattr(app_module, "SOCKETIO_AVAILABLE", False):
+            pytest.skip("flask-socketio not installed")
+        return app_module.socketio.test_client(app_module.app)
+
+    def test_tamper_emits_tampered_alert(self, client):
+        model_id = _register(client, name="ResNet", hash_val="goodhash").get_json()["modelId"]
+        sio = self._sio_client()
+        assert sio.is_connected()
+        sio.get_received()  # clear connect noise
+        # Verify with a WRONG hash → tamper
+        client.post("/api/verify", json={"modelId": model_id, "providedHash": "WRONGHASH", "verifier": "bob"})
+        events = [r for r in sio.get_received() if r["name"] == "verification_alert"]
+        assert len(events) == 1, "exactly one alert should be broadcast"
+        payload = events[0]["args"][0]
+        assert payload["isValid"] is False
+        assert payload["status"] == "TAMPERED"
+        assert payload["verifier"] == "bob"
+        assert payload["modelName"] == "ResNet"
+        assert payload["modelId"] == model_id
+        assert "timestamp" in payload
+        sio.disconnect()
+
+    def test_valid_emits_pass_alert(self, client):
+        model_id = _register(client, name="BERT", hash_val="okhash").get_json()["modelId"]
+        sio = self._sio_client()
+        sio.get_received()
+        client.post("/api/verify", json={"modelId": model_id, "providedHash": "okhash", "verifier": "carol"})
+        events = [r for r in sio.get_received() if r["name"] == "verification_alert"]
+        assert len(events) == 1
+        assert events[0]["args"][0]["status"] == "PASS"
+        assert events[0]["args"][0]["isValid"] is True
+        sio.disconnect()
+
+    def test_alert_broadcasts_to_all_clients(self, client):
+        model_id = _register(client, hash_val="multi").get_json()["modelId"]
+        a = self._sio_client()
+        b = self._sio_client()
+        a.get_received(); b.get_received()
+        client.post("/api/verify", json={"modelId": model_id, "providedHash": "WRONG", "verifier": "bob"})
+        a_evt = [r for r in a.get_received() if r["name"] == "verification_alert"]
+        b_evt = [r for r in b.get_received() if r["name"] == "verification_alert"]
+        assert len(a_evt) == 1 and len(b_evt) == 1, "every connected client must receive the alert"
+        a.disconnect(); b.disconnect()
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Blockchain certificate  (POST /api/certificate/<id>, reportlab PDF)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestCertificate:
+
+    def _skip_if_no_reportlab(self):
+        try:
+            import reportlab  # noqa: F401
+        except ImportError:
+            pytest.skip("reportlab not installed")
+
+    def test_certificate_returns_pdf(self, client):
+        self._skip_if_no_reportlab()
+        model_id = _register(client, name="CertModel", hash_val="certhash").get_json()["modelId"]
+        resp = client.post(f"/api/certificate/{model_id}")
+        assert resp.status_code == 200
+        assert resp.headers["Content-Type"] == "application/pdf"
+        assert resp.headers["Content-Disposition"].startswith("attachment")
+        data = resp.get_data()
+        assert data[:5] == b"%PDF-", "response must be a real PDF"
+        assert len(data) > 1500
+
+    def test_certificate_unknown_model(self, client):
+        self._skip_if_no_reportlab()
+        resp = client.post("/api/certificate/does-not-exist")
+        assert resp.status_code == 404
+        assert resp.get_json()["success"] is False
+
+    def test_certificate_without_txid_still_valid(self, client):
+        # A model with no Algorand TxID must still render a valid PDF (QR -> explorer home)
+        self._skip_if_no_reportlab()
+        models_registry["notx"] = {
+            "modelId": "notx", "modelName": "No-Tx Model", "owner": "alice",
+            "modelHash": "h" * 64, "registeredAt": 1700000000, "isActive": True,
+        }
+        resp = client.post("/api/certificate/notx")
+        assert resp.status_code == 200
+        assert resp.get_data()[:5] == b"%PDF-"
+
+    def test_certificate_is_post_only(self, client):
+        self._skip_if_no_reportlab()
+        model_id = _register(client, hash_val="getcert").get_json()["modelId"]
+        # GET is not allowed on the certificate route
+        assert client.get(f"/api/certificate/{model_id}").status_code == 405
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Chain verify-tx result field  (feeds the Analytics pie chart)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestChainResultField:
+
+    def test_verify_result_reflects_validity(self, client):
+        mid = _register(client, hash_val="rh").get_json()["modelId"]
+        client.post("/api/verify", json={"modelId": mid, "providedHash": "rh"})       # valid
+        client.post("/api/verify", json={"modelId": mid, "providedHash": "WRONG"})    # invalid
+        app_module._invalidate_chain_cache()
+        chain = client.get("/api/chain").get_json()["chain"]
+        results = [tx["result"] for b in chain for tx in b["transactions"] if tx.get("type") == "verify"]
+        assert "valid" in results and "invalid" in results
+        assert "unknown" not in results
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Batch verification  (POST /api/verify-batch)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestBatchVerify:
+
+    def test_batch_classifies_each_file(self, client):
+        _register(client, name="ModelA", hash_val="hashAAA")
+        _register(client, name="ModelB", hash_val="hashBBB")
+        resp = client.post("/api/verify-batch", json={"files": [
+            {"filename": "a.bin",       "hash": "hashAAA"},     # verified (hash match)
+            {"filename": "ModelB.pt",   "hash": "WRONGHASH"},   # tampered (name match, hash differs)
+            {"filename": "mystery.onnx", "hash": "zzz999"},     # unregistered
+        ]})
+        d = resp.get_json()
+        assert resp.status_code == 200 and d["success"] is True
+        by_file = {r["filename"]: r for r in d["results"]}
+        assert by_file["a.bin"]["status"] == "verified"
+        assert by_file["a.bin"]["modelName"] == "ModelA"
+        assert by_file["ModelB.pt"]["status"] == "tampered"
+        assert by_file["mystery.onnx"]["status"] == "unregistered"
+        assert d["summary"] == {"verified": 1, "tampered": 1, "unregistered": 1}
+        assert d["total"] == 3
+
+    def test_batch_matches_historical_version(self, client):
+        mid = _register(client, name="Vmodel", hash_val="v1hash").get_json()["modelId"]
+        client.post("/api/add-version", json={"modelId": mid, "newHash": "v2hash", "changelog": "v2"})
+        d = client.post("/api/verify-batch", json={"files": [{"filename": "old.bin", "hash": "v1hash"}]}).get_json()
+        assert d["results"][0]["status"] == "verified"
+        assert d["results"][0]["version"] == 1
+
+    def test_batch_rejects_empty(self, client):
+        assert client.post("/api/verify-batch", json={"files": []}).status_code == 400
+
+    def test_batch_rejects_over_20(self, client):
+        files = [{"filename": f"f{i}", "hash": f"h{i}"} for i in range(21)]
+        assert client.post("/api/verify-batch", json={"files": files}).status_code == 400
+
+    def test_batch_requires_auth(self, client):
+        resp = client.post("/api/verify-batch", json={"files": [{"filename": "x", "hash": "y"}]}, headers={"No-Auth": True})
+        assert resp.status_code == 401
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Layer order semantics  (reorder detection must survive serialization)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestLayerOrder:
+
+    def _register_layered(self, client):
+        h = "layeredhash"
+        return client.post("/api/register", json={
+            "modelName": "Layered", "modelHash": h, "owner": "alice",
+            "powNonce": mine_pow(h),
+            # deliberately NON-alphabetical registration order
+            "layerHashes": {"conv2d_1": "h1", "batch_norm_1": "h2", "activation_1": "h3"},
+            "layerOrder": ["conv2d_1", "batch_norm_1", "activation_1"],
+        })
+
+    def test_register_stores_layer_order(self, client):
+        mid = self._register_layered(client).get_json()["modelId"]
+        assert models_registry[mid]["layerOrder"] == ["conv2d_1", "batch_norm_1", "activation_1"]
+
+    def test_verify_returns_explicit_layer_order(self, client):
+        mid = self._register_layered(client).get_json()["modelId"]
+        d = client.post("/api/verify", json={"modelId": mid, "providedHash": "WRONG"}).get_json()
+        assert d["layerOrder"] == ["conv2d_1", "batch_norm_1", "activation_1"]
+
+    def test_json_responses_preserve_key_order(self, client):
+        # Flask's default sort_keys=True would alphabetize layerHashes and break
+        # order semantics — assert raw response bytes keep registration order.
+        mid = self._register_layered(client).get_json()["modelId"]
+        resp = client.post("/api/verify", json={"modelId": mid, "providedHash": "WRONG"})
+        raw = resp.get_data(as_text=True)
+        assert raw.index("conv2d_1") < raw.index("batch_norm_1") < raw.index("activation_1")
+
+    def test_layer_order_falls_back_to_manifest_keys(self, client):
+        h = "nofallback"
+        resp = client.post("/api/register", json={
+            "modelName": "NoOrder", "modelHash": h, "owner": "alice",
+            "powNonce": mine_pow(h),
+            "layerHashes": {"z_layer": "h1", "a_layer": "h2"},   # no explicit layerOrder
+        })
+        mid = resp.get_json()["modelId"]
+        assert models_registry[mid]["layerOrder"] == ["z_layer", "a_layer"]
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Trustless layer manifest  (MerkleRoot(Λ, π) + inclusion proofs)
+# ═══════════════════════════════════════════════════════════════════
+
+import hashlib as _hl
+
+
+def _fold(leaf, proof):
+    """Client-side proof folding, replicated for test verification."""
+    h = leaf
+    for step in proof:
+        h = _hl.sha256(((h + step["hash"]) if step["right"] else (step["hash"] + h)).encode()).hexdigest()
+    return h
+
+
+class TestManifestMerkle:
+
+    LH = {"conv2d_1": "a" * 64, "batch_norm_1": "b" * 64, "dense_1": "c" * 64}
+    ORDER = ["conv2d_1", "batch_norm_1", "dense_1"]
+
+    def test_root_deterministic(self):
+        r1, _, _ = app_module.compute_layer_merkle(self.LH, self.ORDER)
+        r2, _, _ = app_module.compute_layer_merkle(dict(self.LH), list(self.ORDER))
+        assert r1 == r2 and len(r1) == 64
+
+    def test_reorder_changes_root(self):
+        r1, _, _ = app_module.compute_layer_merkle(self.LH, self.ORDER)
+        r2, _, _ = app_module.compute_layer_merkle(self.LH, ["dense_1", "batch_norm_1", "conv2d_1"])
+        assert r1 != r2, "root must commit to the layer ORDER (π), not just the set"
+
+    def test_layer_hash_change_changes_root(self):
+        tampered = dict(self.LH); tampered["dense_1"] = "d" * 64
+        r1, _, _ = app_module.compute_layer_merkle(self.LH, self.ORDER)
+        r2, _, _ = app_module.compute_layer_merkle(tampered, self.ORDER)
+        assert r1 != r2
+
+    def test_every_proof_folds_to_root(self):
+        root, leaves, order = app_module.compute_layer_merkle(self.LH, self.ORDER)
+        for i, name in enumerate(order):
+            leaf = app_module._manifest_leaf(i, name, self.LH[name])
+            assert leaf == leaves[i]
+            proof = app_module.merkle_inclusion_proof(leaves, i)
+            assert _fold(leaf, proof) == root, f"proof for {name} must reach the root"
+
+    def test_forged_layer_hash_fails_proof(self):
+        root, leaves, order = app_module.compute_layer_merkle(self.LH, self.ORDER)
+        forged_leaf = app_module._manifest_leaf(0, "conv2d_1", "f" * 64)   # wrong hash
+        proof = app_module.merkle_inclusion_proof(leaves, 0)
+        assert _fold(forged_leaf, proof) != root
+
+    def test_forged_position_fails_proof(self):
+        # same name+hash claimed at a different index must NOT verify (π binding)
+        root, leaves, order = app_module.compute_layer_merkle(self.LH, self.ORDER)
+        moved_leaf = app_module._manifest_leaf(2, "conv2d_1", self.LH["conv2d_1"])
+        proof = app_module.merkle_inclusion_proof(leaves, 0)
+        assert _fold(moved_leaf, proof) != root
+
+    def test_single_layer_manifest(self):
+        root, leaves, order = app_module.compute_layer_merkle({"only": "e" * 64}, ["only"])
+        assert root == leaves[0]
+        assert app_module.merkle_inclusion_proof(leaves, 0) == []
+
+    def test_empty_manifest(self):
+        root, leaves, order = app_module.compute_layer_merkle({}, [])
+        assert root is None and leaves == [] and order == []
+
+
+class TestManifestProofEndpoint:
+
+    def _register_layered(self, client):
+        h = "merklehash"
+        return client.post("/api/register", json={
+            "modelName": "MerkleModel", "modelHash": h, "owner": "alice",
+            "powNonce": mine_pow(h),
+            "layerHashes": {"conv2d_1": "1" * 64, "dense_1": "2" * 64},
+            "layerOrder": ["conv2d_1", "dense_1"],
+        }).get_json()
+
+    def test_register_stores_merkle_root(self, client):
+        mid = self._register_layered(client)["modelId"]
+        expected, _, _ = app_module.compute_layer_merkle(
+            {"conv2d_1": "1" * 64, "dense_1": "2" * 64}, ["conv2d_1", "dense_1"])
+        assert models_registry[mid]["layerMerkleRoot"] == expected
+
+    def test_endpoint_serves_valid_proofs(self, client):
+        mid = self._register_layered(client)["modelId"]
+        d = client.get(f"/api/manifest-proof/{mid}").get_json()
+        assert d["success"] is True
+        assert d["layerCount"] == 2
+        assert d["merkleRoot"] == models_registry[mid]["layerMerkleRoot"]
+        for p in d["proofs"]:
+            leaf = app_module._manifest_leaf(p["index"], p["name"], p["layerHash"])
+            assert _fold(leaf, p["proof"]) == d["merkleRoot"]
+
+    def test_endpoint_unknown_model(self, client):
+        assert client.get("/api/manifest-proof/nope").status_code == 404
+
+    def test_endpoint_no_layers(self, client):
+        mid = _register(client, hash_val="plainhash").get_json()["modelId"]
+        assert client.get(f"/api/manifest-proof/{mid}").status_code == 404
+
+    def test_broadcast_receives_layer_root(self, client, monkeypatch):
+        captured = {}
+        def spy(model_id, name, hash_val, owner, **kw):
+            captured.update(kw)
+            return {"success": True, "txid": "TX", "round": 1}
+        monkeypatch.setattr(algorand_client, "broadcast_hash_to_algorand", spy)
+        self._register_layered(client)
+        assert captured.get("layer_root") and len(captured["layer_root"]) == 64
+        assert captured.get("layer_count") == 2
